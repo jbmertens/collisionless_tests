@@ -255,6 +255,9 @@ public:
     // interpolated value at (i_in, j_in, k_in)
     RT Fijk = CINT(id, F_i_jd_kd[0], F_i_jd_kd[1], F_i_jd_kd[2], F_i_jd_kd[3]);
 
+    delete [] F_i_j_kd;
+    delete [] F_i_jd_kd;
+
     return Fijk;
   }
 

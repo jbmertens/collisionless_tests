@@ -223,7 +223,7 @@ public:
   real_t _getXRangeInSVoxel(RK4_t * DX, idx_t s1_idx, idx_t s2_idx,
     idx_t s3_idx, real_t X0_lower, real_t X0_upper)
   {
-    real_t X_vals_on_bounds[] = {
+    std::vector<real_t> X_vals_on_bounds = {
       (*DX)(s1_idx,s2_idx,s3_idx) + X0_lower,
       (*DX)(s1_idx+1,s2_idx,s3_idx) + X0_upper,
       (*DX)(s1_idx,s2_idx+1,s3_idx) + X0_lower,
@@ -241,6 +241,7 @@ public:
       if(X_vals_on_bounds[i] > X_max) X_max = X_vals_on_bounds[i];
       if(X_vals_on_bounds[i] < X_min) X_min = X_vals_on_bounds[i];
     }
+
     return X_max - X_min;
   }
 
@@ -278,7 +279,7 @@ public:
     real_t weight = 1.0 / (real_t) num_carriers
       * specs.nx*specs.ny*specs.nz / specs.ns1/specs.ns2/specs.ns3;
 
-    // CIC-distribute mass from all carriers
+    // distribute mass from all carriers
     idx_t i, j, k;
     for(i=0; i<num_x_carriers; ++i)
       for(j=0; j<num_y_carriers; ++j)
@@ -510,7 +511,19 @@ public:
 
   ~SheetSimulation()
   {
-    // TODO: Free up things.
+    delete Dx;
+    delete Dy;
+    delete Dz;
+
+    delete vx;
+    delete vy;
+    delete vz;
+
+    delete rho;
+    delete dx_phi;
+    delete dy_phi;
+    delete dz_phi;
+    delete fourierX;
   }
 
   void initializeFields()
@@ -525,7 +538,7 @@ public:
         for(idx_t k=0; k<specs.ns3; k++)
         {
           real_t x_frac = ((real_t) i)/specs.ns1 - 0.5;
-          Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 1.0*std::exp(-1.0*std::pow(x_frac/0.05, 2))*x_frac;
+          Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 0.5*std::exp(-std::pow(x_frac/0.05, 2))*x_frac;
             //+0.3*std::exp(-1.0*std::pow((x_frac-.2)/0.05, 2.0))*x_frac;
           Dy->_p(i,j,k) = 0.0;
           Dz->_p(i,j,k) = 0.0;

@@ -74,7 +74,6 @@ public:
   ~RK4Register()
   {
     delete [] _array_p;
-    delete [] _array_a;
     delete [] _array_c;
     delete [] _array_f;
   }
