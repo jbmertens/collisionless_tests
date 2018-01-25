@@ -51,10 +51,12 @@ public:
   TimerManager _timer;
   idx_t step;
 
-  enum Verbosity { none = 0, minimal = 1, verbose = 2, debug = 3 };
+  enum Verbosity { none, minimal, verbose, debug };
   Verbosity verbosity;
 
-  enum depositScheme { CIC = 0, PCS = 1 };
+  enum depositScheme { CIC, PCS };
+  enum carrierCountScheme { per_dx, per_ds };
+  enum initializationType { uniform1d, uniform1dv, overdensity1d };
 
   // Simulation information
   struct Specs
@@ -70,6 +72,8 @@ public:
     real_t dt; ///< timestep
 
     depositScheme deposit;
+    carrierCountScheme carrier_count_scheme;
+    initializationType initialization_type;
   };
 
   Specs specs = {0};
@@ -83,6 +87,7 @@ public:
   array_t *rho; ///< Metric-space density
   array_t *dx_phi, *dy_phi, *dz_phi; ///< Metric-space derivatives of metric
                                      ///< (Newtonian potential)
+  array_t *phi; ///< Gravitational potential
 
   fourier_t * fourierX; ///< FFT in metric space
 
@@ -257,17 +262,27 @@ public:
 
     idx_t num_x_carriers, num_y_carriers, num_z_carriers;
 
-    num_x_carriers = specs.carriers_per_dx == 0 ? 1 : specs.carriers_per_dx*(
-      (idx_t) (0.5 + _getXRangeInSVoxel(Dx, s1, s2, s3, _S1IDXtoX0(s1), _S1IDXtoX0(s1+1)) / rho->dx ) );
+    switch(specs.carrier_count_scheme)
+    {
+      case per_dx:
+        num_x_carriers = specs.carriers_per_dx == 0 ? 1 : specs.carriers_per_dx*(
+          (idx_t) (0.5 + _getXRangeInSVoxel(Dx, s1, s2, s3, _S1IDXtoX0(s1), _S1IDXtoX0(s1+1)) / rho->dx ) );
+        num_y_carriers = specs.carriers_per_dy == 0 ? 1 : specs.carriers_per_dy*(
+          (idx_t) (0.5 + _getXRangeInSVoxel(Dy, s1, s2, s3, _S2IDXtoY0(s2), _S2IDXtoY0(s2+1)) / rho->dy ) );
+        num_z_carriers = specs.carriers_per_dz == 0 ? 1 : specs.carriers_per_dz*(
+          (idx_t) (0.5 + _getXRangeInSVoxel(Dz, s1, s2, s3, _S3IDXtoZ0(s3), _S3IDXtoZ0(s3+1)) / rho->dz ) );
+        break;
+      case per_ds:
+      default:
+        num_x_carriers = specs.carriers_per_dx;
+        num_y_carriers = specs.carriers_per_dy;
+        num_z_carriers = specs.carriers_per_dz;
+        break;
+    }
+
     if(num_x_carriers <= 0) num_x_carriers = 1;
-
-    num_y_carriers = specs.carriers_per_dy == 0 ? 1 : specs.carriers_per_dy*(
-      (idx_t) (0.5 + _getXRangeInSVoxel(Dy, s1, s2, s3, _S2IDXtoY0(s2), _S2IDXtoY0(s2+1)) / rho->dy ) );
     if(num_y_carriers <= 0) num_y_carriers = 1;
-
-    num_z_carriers = specs.carriers_per_dz == 0 ? 1 : specs.carriers_per_dz*(
-      (idx_t) (0.5 + _getXRangeInSVoxel(Dz, s1, s2, s3, _S3IDXtoZ0(s3), _S3IDXtoZ0(s3+1)) / rho->dz ) );
-    if(num_x_carriers <= 0) num_z_carriers = 1;
+    if(num_z_carriers <= 0) num_z_carriers = 1;
 
     idx_t num_carriers = num_x_carriers*num_y_carriers*num_z_carriers;
     if(verbosity == debug && s1==s1_dbg && s2==s2_dbg && s3==s3_dbg)
@@ -328,10 +343,12 @@ public:
     *dx_phi = *rho;
     *dy_phi = *rho;
     *dz_phi = *rho;
+    *phi = *rho;
 
     fourierX->inverseGradient(&(*dx_phi)[0], 1); // &(*dx_phi)[0] is pointer to dx_phi internal array
     fourierX->inverseGradient(&(*dy_phi)[0], 2);
     fourierX->inverseGradient(&(*dz_phi)[0], 3);
+    fourierX->inverseLaplacian(&(*phi)[0]);
     if(verbosity == debug)
     {
       std::cout << " done." << std::endl;
@@ -490,6 +507,8 @@ public:
       specs.lx, specs.ly, specs.lz);
     dz_phi = new array_t(specs.nx, specs.ny, specs.nz,
       specs.lx, specs.ly, specs.lz);
+    phi = new array_t(specs.nx, specs.ny, specs.nz,
+      specs.lx, specs.ly, specs.lz);
 
     // For computing Fourier transforms
     fourierX = new fourier_t(specs.nx, specs.ny, specs.nz,
@@ -523,32 +542,75 @@ public:
     delete dx_phi;
     delete dy_phi;
     delete dz_phi;
+    delete phi;
     delete fourierX;
   }
 
   void initializeFields()
   {
-    _timer["_initializeFields"].start();
     if(verbosity > none)
       std::cout << "Initializing fields..." << std::endl;
 
+    switch(specs.initialization_type)
+    {
+      case uniform1d :
+        _initialize1DUniform();
+        break;
+
+      case uniform1dv :
+        _initialize1DUniformMoving();
+        break;
+
+      case overdensity1d :
+      default :
+        _initialize1DOverdensity();
+        break;
+    }
+    
+    _initialize1DUniform();
+
+    // copy to _a registers as well,
+    // set metric for output
+    _stepInit();
+    _RK4Calc();
+  }
+
+  void _initialize1DUniform()
+  {
+    // position fields should just be coordinates
+    for(idx_t i=0; i<specs.ns1; i++)
+      for(idx_t j=0; j<specs.ns2; j++)
+        for(idx_t k=0; k<specs.ns3; k++)
+        {
+          Dx->_p(i,j,k) = 1.0/specs.nx/5.0;
+        }
+  }
+
+  void _initialize1DUniformMoving()
+  {
+    // position fields should just be coordinates
+    for(idx_t i=0; i<specs.ns1; i++)
+      for(idx_t j=0; j<specs.ns2; j++)
+        for(idx_t k=0; k<specs.ns3; k++)
+        {
+          Dx->_p(i,j,k) = 1.0/specs.nx/5.0;
+          vx->_p(i,j,k) = 0.01;
+        }
+  }
+
+  void _initialize1DOverdensity()
+  {
     // position fields should just be coordinates
     for(idx_t i=0; i<specs.ns1; i++)
       for(idx_t j=0; j<specs.ns2; j++)
         for(idx_t k=0; k<specs.ns3; k++)
         {
           real_t x_frac = ((real_t) i)/specs.ns1 - 0.5;
-          Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 0.5*std::exp(-std::pow(x_frac/0.05, 2))*x_frac;
+          Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 0.5*std::exp(-1.0*std::pow(x_frac/0.05, 2))*x_frac;
             //+0.3*std::exp(-1.0*std::pow((x_frac-.2)/0.05, 2.0))*x_frac;
           Dy->_p(i,j,k) = 0.0;
           Dz->_p(i,j,k) = 0.0;
         }
-
-    // copy to _a registers as well,
-    // set metric for output
-    _stepInit();
-    _RK4Calc();
-    _timer["_initializeFields"].stop();
   }
 
   std::string toStr(real_t val)
@@ -645,6 +707,15 @@ public:
     for(idx_t p=0; p<specs.nx; ++p)
     {
       std::string str = toStr((*dx_phi)(p,1,1)) + "\t";
+      gzwrite(fi, str.c_str(), str.length());
+    }
+    gzclose(fi);
+
+    filename = filename_base + "_phi.strip.gz";
+    fi = gzopen(filename.c_str(), "ab");
+    for(idx_t p=0; p<specs.nx; ++p)
+    {
+      std::string str = toStr((*phi)(p,1,1)) + "\t";
       gzwrite(fi, str.c_str(), str.length());
     }
     gzclose(fi);

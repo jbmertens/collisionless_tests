@@ -38,25 +38,15 @@ void runSim(SheetSimulation::Specs specs, std::string out_base_dir)
   sheet.printTimingInformation();
 }
 
-
-int main(int argc, char **argv)
+void runResolutionTests(SheetSimulation::Specs specs)
 {
-  std::cout << "Beginning simulations." << std::endl;
-
-  SheetSimulation::Specs specs = {0};
-  specs.nx = 64; specs.ny = 1; specs.nz = 1;
-  specs.ns1 = 64; specs.ns2 = 1; specs.ns3 = 1;
-  specs.lx = 1.0; specs.ly = 1.0; specs.lz = 1.0;
-  specs.carriers_per_dx = 4;
-  specs.carriers_per_dy = 0;
-  specs.carriers_per_dz = 0;
-  specs.dt = 0.02;
-  specs.deposit = SheetSimulation::depositScheme::PCS;
-
+  specs.initialization_type = SheetSimulation::initializationType::overdensity1d;
   SheetSimulation::Specs specs_alt;
 
   // TSC deposition scheme
   specs_alt = specs;
+  specs_alt.ns1 = 64;
+  specs_alt.nx = 64;
   specs_alt.carriers_per_dx = 0;
   runSim(specs_alt, "sim_ns064_nx064_cpdx0");
 
@@ -85,6 +75,8 @@ int main(int argc, char **argv)
 
   // 4 carriers per dx
   specs_alt = specs;
+  specs_alt.ns1 = 64;
+  specs_alt.nx = 64;
   specs_alt.carriers_per_dx = 32;
   runSim(specs_alt, "sim_ns064_nx064_cpdx32");
 
@@ -101,6 +93,160 @@ int main(int argc, char **argv)
   specs_alt.ns1 = 256;
   specs_alt.nx = 256;
   runSim(specs_alt, "sim_ns256_nx256_cpdx32");
+}
+
+void runUniformTests(SheetSimulation::Specs specs)
+{
+  specs.initialization_type = SheetSimulation::initializationType::uniform1dv;
+  SheetSimulation::Specs specs_alt;
+
+  specs_alt = specs;
+  specs_alt.ns1 = 3;
+  specs_alt.nx = 64;
+  specs_alt.carriers_per_dx = 0;
+  runSim(specs_alt, "sim_ns1_nx064_cpdx0");
+
+  specs_alt = specs;
+  specs_alt.ns1 = 3;
+  specs_alt.nx = 64;
+  specs_alt.carriers_per_dx = 2;
+  runSim(specs_alt, "sim_ns1_nx064_cpdx2");
+
+  specs_alt = specs;
+  specs_alt.ns1 = 3;
+  specs_alt.nx = 64;
+  specs_alt.carriers_per_dx = 2;
+  specs_alt.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_ds;
+  runSim(specs_alt, "sim_ns1_nx064_cpds2");
+
+
+  specs_alt = specs;
+  specs_alt.ns1 = 3;
+  specs_alt.nx = 128;
+  specs_alt.carriers_per_dx = 0;
+  runSim(specs_alt, "sim_ns1_nx128_cpdx0");
+
+  specs_alt = specs;
+  specs_alt.ns1 = 3;
+  specs_alt.nx = 128;
+  specs_alt.carriers_per_dx = 4;
+  runSim(specs_alt, "sim_ns1_nx128_cpdx4");
+
+  specs_alt = specs;
+  specs_alt.ns1 = 3;
+  specs_alt.nx = 128;
+  specs_alt.carriers_per_dx = 4;
+  specs_alt.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_ds;
+  runSim(specs_alt, "sim_ns1_nx128_cpds4");
+
+
+  specs_alt = specs;
+  specs_alt.ns1 = 3;
+  specs_alt.nx = 256;
+  specs_alt.carriers_per_dx = 0;
+  runSim(specs_alt, "sim_ns1_nx256_cpdx0");
+
+  specs_alt = specs;
+  specs_alt.ns1 = 3;
+  specs_alt.nx = 256;
+  specs_alt.carriers_per_dx = 8;
+  runSim(specs_alt, "sim_ns1_nx256_cpdx8");
+
+  specs_alt = specs;
+  specs_alt.ns1 = 3;
+  specs_alt.nx = 256;
+  specs_alt.carriers_per_dx = 8;
+  specs_alt.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_ds;
+  runSim(specs_alt, "sim_ns1_nx256_cpds8");
+
+}
+
+
+void runUniformTests2(SheetSimulation::Specs specs)
+{
+  specs.initialization_type = SheetSimulation::initializationType::uniform1dv;
+  SheetSimulation::Specs specs_alt;
+
+  specs_alt = specs;
+  specs_alt.ns1 = 63;
+  specs_alt.nx = 64;
+  specs_alt.carriers_per_dx = 0;
+  runSim(specs_alt, "sim_ns063_nx064_cpdx0");
+
+  specs_alt = specs;
+  specs_alt.ns1 = 63;
+  specs_alt.nx = 64;
+  specs_alt.carriers_per_dx = 2;
+  runSim(specs_alt, "sim_ns063_nx064_cpdx2");
+
+  specs_alt = specs;
+  specs_alt.ns1 = 63;
+  specs_alt.nx = 64;
+  specs_alt.carriers_per_dx = 2;
+  specs_alt.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_ds;
+  runSim(specs_alt, "sim_ns063_nx064_cpds2");
+
+
+  specs_alt = specs;
+  specs_alt.ns1 = 127;
+  specs_alt.nx = 128;
+  specs_alt.carriers_per_dx = 0;
+  runSim(specs_alt, "sim_ns127_nx128_cpdx0");
+
+  specs_alt = specs;
+  specs_alt.ns1 = 127;
+  specs_alt.nx = 128;
+  specs_alt.carriers_per_dx = 4;
+  runSim(specs_alt, "sim_ns127_nx128_cpdx4");
+
+  specs_alt = specs;
+  specs_alt.ns1 = 127;
+  specs_alt.nx = 128;
+  specs_alt.carriers_per_dx = 4;
+  specs_alt.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_ds;
+  runSim(specs_alt, "sim_ns127_nx128_cpds4");
+
+
+  specs_alt = specs;
+  specs_alt.ns1 = 255;
+  specs_alt.nx = 256;
+  specs_alt.carriers_per_dx = 0;
+  runSim(specs_alt, "sim_ns255_nx256_cpdx0");
+
+  specs_alt = specs;
+  specs_alt.ns1 = 255;
+  specs_alt.nx = 256;
+  specs_alt.carriers_per_dx = 8;
+  runSim(specs_alt, "sim_ns255_nx256_cpdx8");
+
+  specs_alt = specs;
+  specs_alt.ns1 = 255;
+  specs_alt.nx = 256;
+  specs_alt.carriers_per_dx = 8;
+  specs_alt.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_ds;
+  runSim(specs_alt, "sim_ns255_nx256_cpds8");
+
+}
+
+
+int main(int argc, char **argv)
+{
+  std::cout << "Beginning simulations." << std::endl;
+
+  SheetSimulation::Specs specs = {0};
+  specs.nx = 1; specs.ny = 1; specs.nz = 1;
+  specs.ns1 = 1; specs.ns2 = 1; specs.ns3 = 1;
+  specs.lx = 1.0; specs.ly = 1.0; specs.lz = 1.0;
+  specs.carriers_per_dx = 4;
+  specs.carriers_per_dy = 0;
+  specs.carriers_per_dz = 0;
+  specs.dt = 0.02;
+  specs.deposit = SheetSimulation::depositScheme::PCS;
+  specs.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_dx;
+
+  // runResolutionTests(specs);  
+  // runUniformTests(specs);
+  runUniformTests2(specs);
 
   return 0;
 }
