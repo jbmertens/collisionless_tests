@@ -10,10 +10,10 @@
 NotebookFileLineBreakTest
 NotebookFileLineBreakTest
 NotebookDataPosition[       158,          7]
-NotebookDataLength[     18744,        451]
-NotebookOptionsPosition[     18183,        430]
-NotebookOutlinePosition[     18563,        446]
-CellTagsIndexPosition[     18520,        443]
+NotebookDataLength[     19719,        470]
+NotebookOptionsPosition[     19153,        449]
+NotebookOutlinePosition[     19533,        465]
+CellTagsIndexPosition[     19490,        462]
 WindowFrame->Normal*)
 
 (* Beginning of Notebook Content *)
@@ -74,10 +74,42 @@ Cell[BoxData[{
   RowBox[{"GF", "=", 
    RowBox[{
     RowBox[{"GaussianFilter", "[", 
-     RowBox[{"#", ",", "10"}], "]"}], "&"}]}], ";"}]}], "Input",
+     RowBox[{"#", ",", "10"}], "]"}], "&"}]}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"R", "=", "RotateRight"}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"Der", "[", 
+   RowBox[{"f_", ",", "dx_"}], "]"}], ":=", 
+  RowBox[{
+   RowBox[{"(", 
+    RowBox[{
+     RowBox[{"R", "[", 
+      RowBox[{"f", ",", "1"}], "]"}], "-", 
+     RowBox[{"R", "[", 
+      RowBox[{"f", ",", 
+       RowBox[{"-", "1"}]}], "]"}]}], ")"}], "/", 
+   RowBox[{"(", 
+    RowBox[{"2", " ", "dx"}], ")"}]}]}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"Lap", "[", 
+   RowBox[{"f_", ",", "dx_"}], "]"}], ":=", 
+  RowBox[{
+   RowBox[{
+    RowBox[{"(", 
+     RowBox[{
+      RowBox[{"R", "[", 
+       RowBox[{"f", ",", "1"}], "]"}], "-", 
+      RowBox[{"2", "f"}], "+", 
+      RowBox[{"R", "[", 
+       RowBox[{"f", ",", 
+        RowBox[{"-", "1"}]}], "]"}]}], ")"}], "/", "dx"}], "/", 
+   "dx"}]}]}], "Input",
  CellChangeTimes->{{3.725575649523491*^9, 3.7255756839151587`*^9}, {
   3.7257279105302877`*^9, 3.7257279110434837`*^9}, {3.725897214311881*^9, 
-  3.7258972145174675`*^9}, {3.7258973009831715`*^9, 3.725897301048885*^9}}],
+  3.7258972145174675`*^9}, {3.7258973009831715`*^9, 3.725897301048885*^9}, {
+  3.725903022565093*^9, 3.7259030226703367`*^9}, {3.7259367204555626`*^9, 
+  3.7259367559901667`*^9}, {3.7259372286910787`*^9, 3.7259372476214285`*^9}, {
+  3.7260048369626107`*^9, 3.726004837296999*^9}}],
 
 Cell[BoxData[
  RowBox[{
@@ -139,7 +171,7 @@ Cell[BoxData[
               "\"\<Table\>\""}], "]"}], ",", 
             RowBox[{"{", 
              RowBox[{"s", ",", 
-              RowBox[{"info", "[", "\"\<ns1\>\"", "]"}]}], "}"}]}], "]"}]}], 
+              RowBox[{"info", "[", "\"\<nx\>\"", "]"}]}], "}"}]}], "]"}]}], 
          ",", "\[IndentingNewLine]", 
          RowBox[{"\"\<v\>\"", "\[Rule]", 
           RowBox[{"ArrayReshape", "[", 
@@ -161,8 +193,22 @@ Cell[BoxData[
               "\"\<Table\>\""}], "]"}], ",", 
             RowBox[{"{", 
              RowBox[{"s", ",", 
-              RowBox[{"info", "[", "\"\<ns1\>\"", "]"}]}], "}"}]}], "]"}]}]}],
-         "\[IndentingNewLine]", "|>"}], "]"}]}]}], "\[IndentingNewLine]", 
+              RowBox[{"info", "[", "\"\<nx\>\"", "]"}]}], "}"}]}], "]"}]}], 
+         ",", "\[IndentingNewLine]", 
+         RowBox[{"\"\<M\>\"", "\[Rule]", 
+          RowBox[{
+           RowBox[{"Import", "[", 
+            RowBox[{"dir", "<>", "\"\</constraints.dat.gz\>\""}], "]"}], 
+           "\[LeftDoubleBracket]", 
+           RowBox[{";;", ",", "1"}], "\[RightDoubleBracket]"}]}], ",", 
+         "\[IndentingNewLine]", 
+         RowBox[{"\"\<E\>\"", "\[Rule]", 
+          RowBox[{
+           RowBox[{"Import", "[", 
+            RowBox[{"dir", "<>", "\"\</constraints.dat.gz\>\""}], "]"}], 
+           "\[LeftDoubleBracket]", 
+           RowBox[{";;", ",", "2"}], "\[RightDoubleBracket]"}]}]}], 
+        "\[IndentingNewLine]", "|>"}], "]"}]}]}], "\[IndentingNewLine]", 
     "]"}]}], ";"}]], "Input",
  CellChangeTimes->{{3.725575030167266*^9, 3.725575133387659*^9}, {
   3.7255751757391405`*^9, 3.7255752032990003`*^9}, {3.725575500045925*^9, 
@@ -171,7 +217,9 @@ Cell[BoxData[
   3.7257087118190136`*^9}, {3.725709291305959*^9, 3.725709384015912*^9}, {
   3.7257094416538677`*^9, 3.725709455721324*^9}, {3.725709514288427*^9, 
   3.7257095357379913`*^9}, {3.725756842949794*^9, 3.7257568593986683`*^9}, {
-  3.725893893367935*^9, 3.7258938999917545`*^9}}],
+  3.725893893367935*^9, 3.7258938999917545`*^9}, {3.725940880163444*^9, 
+  3.7259409043818455`*^9}, {3.726003848353593*^9, 3.7260038547205615`*^9}, {
+  3.7260041728040266`*^9, 3.7260042028010635`*^9}}],
 
 Cell[BoxData[{
  RowBox[{
@@ -187,7 +235,7 @@ Cell[BoxData[{
      RowBox[{
       RowBox[{"dir", "\[Rule]", 
        RowBox[{"GetSimData", "[", 
-        RowBox[{"dir", ",", "800"}], "]"}]}], ",", 
+        RowBox[{"dir", ",", "400"}], "]"}]}], ",", 
       RowBox[{"{", 
        RowBox[{"dir", ",", "dirs"}], "}"}]}], "]"}], "|>"}]}], 
   ";"}]}], "Input",
@@ -213,37 +261,35 @@ Cell[BoxData[{
    3.725640665957133*^9}, {3.7256417306380444`*^9, 3.725641735878946*^9}, {
    3.7256417763275175`*^9, 3.7256418184482803`*^9}, {3.725708693703787*^9, 
    3.7257086943134594`*^9}, 3.7257093901552887`*^9, {3.725709650671874*^9, 
-   3.7257096518532815`*^9}, 3.72574468324152*^9}],
+   3.7257096518532815`*^9}, 3.72574468324152*^9, {3.725902028359223*^9, 
+   3.725902028714138*^9}, 3.7259022148827586`*^9, {3.7259363298023973`*^9, 
+   3.7259363303107586`*^9}}],
 
-Cell[BoxData[{
- RowBox[{
-  RowBox[{"vcons", "=", 
-   RowBox[{"Table", "[", 
-    RowBox[{
-     RowBox[{"Abs", "[", 
-      RowBox[{
-       RowBox[{
-        RowBox[{"Total", "[", 
-         RowBox[{
-          RowBox[{
-           RowBox[{"data", "[", "k", "]"}], "[", "\"\<v\>\"", "]"}], 
-          "\[LeftDoubleBracket]", "n", "\[RightDoubleBracket]"}], "]"}], "/", 
-        RowBox[{"Total", "[", 
-         RowBox[{
-          RowBox[{
-           RowBox[{"data", "[", "k", "]"}], "[", "\"\<v\>\"", "]"}], 
-          "\[LeftDoubleBracket]", "1", "\[RightDoubleBracket]"}], "]"}]}], 
-       "-", "1"}], "]"}], ",", 
-     RowBox[{"{", 
-      RowBox[{"k", ",", 
-       RowBox[{"Keys", "[", "data", "]"}]}], "}"}], ",", 
-     RowBox[{"{", 
-      RowBox[{"n", ",", "1", ",", "800"}], "}"}]}], "]"}]}], 
-  ";"}], "\[IndentingNewLine]", 
+Cell[BoxData[
  RowBox[{"plot", "=", 
   RowBox[{"ListLogPlot", "[", "\[IndentingNewLine]", 
    RowBox[{
-    RowBox[{"GF", "/@", "vcons"}], ",", "\[IndentingNewLine]", 
+    RowBox[{"GF", "/@", 
+     RowBox[{"Table", "[", 
+      RowBox[{
+       RowBox[{"Abs", "[", 
+        RowBox[{"1", "-", 
+         RowBox[{
+          RowBox[{
+           RowBox[{
+            RowBox[{"data", "[", "k", "]"}], "[", "\"\<E\>\"", "]"}], 
+           "\[LeftDoubleBracket]", "n", "\[RightDoubleBracket]"}], "/", 
+          RowBox[{
+           RowBox[{
+            RowBox[{"data", "[", "k", "]"}], "[", "\"\<E\>\"", "]"}], 
+           "\[LeftDoubleBracket]", "1", "\[RightDoubleBracket]"}]}]}], "]"}], 
+       ",", 
+       RowBox[{"{", 
+        RowBox[{"k", ",", 
+         RowBox[{"Keys", "[", "data", "]"}]}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"n", ",", "2", ",", "400"}], "}"}]}], "]"}]}], ",", 
+    "\[IndentingNewLine]", 
     RowBox[{"Joined", "\[Rule]", "True"}], ",", 
     RowBox[{"PlotRange", "\[Rule]", "All"}], ",", 
     RowBox[{"PlotLegends", "\[Rule]", 
@@ -254,74 +300,45 @@ Cell[BoxData[{
      RowBox[{"{", 
       RowBox[{
       "\"\<Timestep #\>\"", ",", " ", 
-       "\"\<% momentum violation (arb. units)\>\""}], "}"}]}], ",", 
+       "\"\<% Energy violation, |1-E/\!\(\*SubscriptBox[\(E\), \(init\)]\)|\>\
+\""}], "}"}]}], ",", 
     RowBox[{"ImageSize", "\[Rule]", "450"}], ",", 
     RowBox[{
     "PlotLabel", "\[Rule]", 
-     "\"\<Gaussian-filtered % momentum violation vs. t\>\""}]}], 
-   "\[IndentingNewLine]", "]"}]}], "\[IndentingNewLine]", 
- RowBox[{
-  RowBox[{"(*", 
-   RowBox[{"Export", "[", 
-    RowBox[{"\"\<plots/MomentumViolation.png\>\"", ",", "plot"}], "]"}], 
-   "*)"}]}]}], "Input",
- CellChangeTimes->{{3.7258461821715217`*^9, 3.7258462496499233`*^9}, {
-   3.7258470781765175`*^9, 3.725847078649458*^9}, {3.725847480486*^9, 
-   3.725847494538924*^9}, 3.7258512035651226`*^9, {3.725851549549449*^9, 
-   3.7258515623574305`*^9}, {3.725895113590044*^9, 3.7258951316255455`*^9}, {
-   3.725895411449377*^9, 3.7258954147764826`*^9}, {3.7258956990090995`*^9, 
-   3.72589570718701*^9}, 3.7258957834319725`*^9, {3.7258962777628016`*^9, 
-   3.7258962946824837`*^9}, {3.725896339651905*^9, 3.72589634036637*^9}, {
-   3.725897150783594*^9, 3.7258971753487005`*^9}, 3.725897885394099*^9}],
+     "\"\<Gaussian-filtered energy constraint violation vs. t\>\""}]}], 
+   "\[IndentingNewLine]", "]"}]}]], "Input",
+ CellChangeTimes->{{3.726004223553878*^9, 3.7260043343898277`*^9}, {
+   3.7260043659927998`*^9, 3.726004381867385*^9}, {3.7260047779980288`*^9, 
+   3.7260048298005266`*^9}, {3.7260059268965364`*^9, 3.7260059697521777`*^9}, 
+   3.726006753018074*^9, {3.7260067848628902`*^9, 3.7260067995148153`*^9}, {
+   3.726007162933951*^9, 3.72600718242749*^9}, {3.726007472416307*^9, 
+   3.726007480883668*^9}}],
 
-Cell[BoxData[{
- RowBox[{
-  RowBox[{"econs", "=", 
-   RowBox[{"Table", "[", 
-    RowBox[{
-     RowBox[{"Abs", "[", 
-      RowBox[{
-       RowBox[{
-        RowBox[{"(", 
-         RowBox[{
-          RowBox[{"Total", "[", 
-           RowBox[{
-            RowBox[{
-             RowBox[{"data", "[", "k", "]"}], "[", "\"\<\[Phi]\>\"", "]"}], 
-            "\[LeftDoubleBracket]", "n", "\[RightDoubleBracket]"}], "]"}], 
-          "-", 
-          RowBox[{"Total", "[", 
-           SuperscriptBox[
-            RowBox[{
-             RowBox[{
-              RowBox[{"data", "[", "k", "]"}], "[", "\"\<v\>\"", "]"}], 
-             "\[LeftDoubleBracket]", "n", "\[RightDoubleBracket]"}], "2"], 
-           "]"}]}], ")"}], "/", 
-        RowBox[{"(", 
-         RowBox[{
-          RowBox[{"Total", "[", 
-           RowBox[{
-            RowBox[{
-             RowBox[{"data", "[", "k", "]"}], "[", "\"\<\[Phi]\>\"", "]"}], 
-            "\[LeftDoubleBracket]", "1", "\[RightDoubleBracket]"}], "]"}], 
-          "-", 
-          RowBox[{"Total", "[", 
-           SuperscriptBox[
-            RowBox[{
-             RowBox[{
-              RowBox[{"data", "[", "k", "]"}], "[", "\"\<v\>\"", "]"}], 
-             "\[LeftDoubleBracket]", "1", "\[RightDoubleBracket]"}], "2"], 
-           "]"}]}], ")"}]}], "-", "1"}], "]"}], ",", 
-     RowBox[{"{", 
-      RowBox[{"k", ",", 
-       RowBox[{"Keys", "[", "data", "]"}]}], "}"}], ",", 
-     RowBox[{"{", 
-      RowBox[{"n", ",", "1", ",", "800"}], "}"}]}], "]"}]}], 
-  ";"}], "\[IndentingNewLine]", 
+Cell[BoxData[
  RowBox[{"plot", "=", 
   RowBox[{"ListLogPlot", "[", "\[IndentingNewLine]", 
    RowBox[{
-    RowBox[{"GF", "/@", "econs"}], ",", "\[IndentingNewLine]", 
+    RowBox[{"GF", "/@", 
+     RowBox[{"Table", "[", 
+      RowBox[{
+       RowBox[{"Abs", "[", 
+        RowBox[{
+         RowBox[{
+          RowBox[{
+           RowBox[{
+            RowBox[{"data", "[", "k", "]"}], "[", "\"\<M\>\"", "]"}], 
+           "\[LeftDoubleBracket]", "n", "\[RightDoubleBracket]"}], "/", 
+          RowBox[{
+           RowBox[{
+            RowBox[{"data", "[", "k", "]"}], "[", "\"\<M\>\"", "]"}], 
+           "\[LeftDoubleBracket]", "1", "\[RightDoubleBracket]"}]}], "-", 
+         "1"}], "]"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"k", ",", 
+         RowBox[{"Keys", "[", "data", "]"}]}], "}"}], ",", 
+       RowBox[{"{", 
+        RowBox[{"n", ",", "1", ",", "400"}], "}"}]}], "]"}]}], ",", 
+    "\[IndentingNewLine]", 
     RowBox[{"Joined", "\[Rule]", "True"}], ",", 
     RowBox[{"PlotRange", "\[Rule]", "All"}], ",", 
     RowBox[{"PlotLegends", "\[Rule]", 
@@ -332,20 +349,21 @@ Cell[BoxData[{
      RowBox[{"{", 
       RowBox[{
       "\"\<Timestep #\>\"", ",", " ", 
-       "\"\<% Energy violation (arb. units)\>\""}], "}"}]}], ",", 
+       "\"\<% momentum violation, |1-M/\!\(\*SubscriptBox[\(M\), \
+\(ini\)]\)|\>\""}], "}"}]}], ",", 
     RowBox[{"ImageSize", "\[Rule]", "450"}], ",", 
     RowBox[{
     "PlotLabel", "\[Rule]", 
-     "\"\<Gaussian-filtered % energy violation vs. t\>\""}]}], 
-   "\[IndentingNewLine]", "]"}]}], "\[IndentingNewLine]", 
- RowBox[{
-  RowBox[{"(*", 
-   RowBox[{"Export", "[", 
-    RowBox[{"\"\<plots/EnergyViolation.png\>\"", ",", "plot"}], "]"}], 
-   "*)"}]}]}], "Input",
- CellChangeTimes->{{3.725895989445713*^9, 3.725895990059377*^9}, {
-   3.7258960500625143`*^9, 3.7258960948365173`*^9}, {3.7258971894974246`*^9, 
-   3.7258972063380785`*^9}, 3.7258978879220734`*^9}],
+     "\"\<Gaussian-filtered momentum violation vs. t\>\""}]}], 
+   "\[IndentingNewLine]", "]"}]}]], "Input",
+ CellChangeTimes->{{3.7260044356080728`*^9, 3.72600445654745*^9}, {
+   3.726004487333932*^9, 3.726004487520899*^9}, {3.7260048604898863`*^9, 
+   3.7260048892293196`*^9}, {3.7260049680420313`*^9, 3.726005067141779*^9}, {
+   3.7260058897069416`*^9, 3.726005899074543*^9}, {3.72600597314972*^9, 
+   3.7260059830562487`*^9}, 3.7260063763137712`*^9, {3.726006758152334*^9, 
+   3.726006782182767*^9}, {3.726007166672192*^9, 3.726007178708422*^9}, {
+   3.726007385929016*^9, 3.7260073891221695`*^9}, {3.7260074314586835`*^9, 
+   3.7260074840990353`*^9}}],
 
 Cell[BoxData[
  RowBox[{"Manipulate", "[", "\[IndentingNewLine]", 
@@ -425,12 +443,13 @@ Cell[BoxData[
        RowBox[{"PlotRange", "\[Rule]", "All"}]}], "]"}]}], 
     "\[IndentingNewLine]", "]"}], ",", "\[IndentingNewLine]", 
    RowBox[{"{", 
-    RowBox[{"n", ",", "1", ",", "800", ",", "1"}], "}"}]}], 
-  "\[IndentingNewLine]", "]"}]], "Input"]
+    RowBox[{"n", ",", "1", ",", "400", ",", "1"}], "}"}]}], 
+  "\[IndentingNewLine]", "]"}]], "Input",
+ CellChangeTimes->{{3.725903240114973*^9, 3.7259032403099885`*^9}}]
 },
 WindowSize->{1920, 1007},
 WindowMargins->{{-8, Automatic}, {Automatic, -8}},
-Magnification:>1.05 Inherited,
+Magnification:>1.15 Inherited,
 FrontEndVersion->"11.0 for Microsoft Windows (64-bit) (September 21, 2016)",
 StyleDefinitions->"Default.nb"
 ]
@@ -445,14 +464,14 @@ CellTagsIndex->{}
 *)
 (*NotebookFileOutline
 Notebook[{
-Cell[558, 20, 2585, 36, 32, "Input"],
-Cell[3146, 58, 786, 21, 55, "Input"],
-Cell[3935, 81, 3891, 92, 253, "Input"],
-Cell[7829, 175, 2207, 40, 55, "Input"],
-Cell[10039, 217, 2409, 57, 143, "Input"],
-Cell[12451, 276, 2702, 71, 148, "Input"],
-Cell[15156, 349, 899, 23, 99, "Input"],
-Cell[16058, 374, 2121, 54, 165, "Input"]
+Cell[558, 20, 2585, 36, 35, "Input"],
+Cell[3146, 58, 1826, 53, 128, "Input"],
+Cell[4975, 113, 4663, 108, 312, "Input"],
+Cell[9641, 223, 2335, 42, 59, "Input"],
+Cell[11979, 267, 1965, 47, 128, "Input"],
+Cell[13947, 316, 2108, 49, 105, "Input"],
+Cell[16058, 367, 899, 23, 105, "Input"],
+Cell[16960, 392, 2189, 55, 174, "Input"]
 }
 ]
 *)

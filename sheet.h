@@ -340,15 +340,18 @@ public:
 
     // Just set \phi'(x)  ~ 1/k \rho
     // TODO: consider large-scale correction terms?
-    *dx_phi = *rho;
-    *dy_phi = *rho;
-    *dz_phi = *rho;
     *phi = *rho;
+    fourierX->inverseLaplacian(&(*phi)[0]); // &(*phi)[0] is pointer to phi's internal array
 
-    fourierX->inverseGradient(&(*dx_phi)[0], 1); // &(*dx_phi)[0] is pointer to dx_phi internal array
-    fourierX->inverseGradient(&(*dy_phi)[0], 2);
-    fourierX->inverseGradient(&(*dz_phi)[0], 3);
-    fourierX->inverseLaplacian(&(*phi)[0]);
+    for(idx_t i=0; i<specs.nx; ++i)
+      for(idx_t j=0; j<specs.ny; ++j)
+        for(idx_t k=0; k<specs.nz; ++k)
+        {
+          (*dx_phi)(i, j, k) = phi->xDer(i,j,k);
+          (*dy_phi)(i, j, k) = phi->yDer(i,j,k);
+          (*dz_phi)(i, j, k) = phi->zDer(i,j,k);
+        }
+
     if(verbosity == debug)
     {
       std::cout << " done." << std::endl;
@@ -480,73 +483,7 @@ public:
     step++;
   }
 
-  void initialize(const Specs specs_in)
-  {
-    specs = specs_in;
-
-    // Phase-space variables
-    Dx = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
-      specs.lx, specs.ly, specs.lz, specs.dt);
-    Dy = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
-      specs.lx, specs.ly, specs.lz, specs.dt);
-    Dz = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
-      specs.lx, specs.ly, specs.lz, specs.dt);
-    vx = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
-      specs.lx, specs.ly, specs.lz, specs.dt);
-    vy = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
-      specs.lx, specs.ly, specs.lz, specs.dt);
-    vz = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
-      specs.lx, specs.ly, specs.lz, specs.dt);
-
-    // Metric-space fields
-    rho = new array_t(specs.nx, specs.ny, specs.nz,
-      specs.lx, specs.ly, specs.lz);
-    dx_phi = new array_t(specs.nx, specs.ny, specs.nz,
-      specs.lx, specs.ly, specs.lz);
-    dy_phi = new array_t(specs.nx, specs.ny, specs.nz,
-      specs.lx, specs.ly, specs.lz);
-    dz_phi = new array_t(specs.nx, specs.ny, specs.nz,
-      specs.lx, specs.ly, specs.lz);
-    phi = new array_t(specs.nx, specs.ny, specs.nz,
-      specs.lx, specs.ly, specs.lz);
-
-    // For computing Fourier transforms
-    fourierX = new fourier_t(specs.nx, specs.ny, specs.nz,
-      specs.lx, specs.ly, specs.lz, &(*rho)[0]);
-  }
-
-  SheetSimulation(const Specs specs_in)
-  {
-    verbosity = none;
-    step = 0;
-    initialize(specs_in);
-  }
-
-  SheetSimulation(const Specs specs_in, Verbosity verbosity_in)
-  {
-    verbosity = verbosity_in;
-    initialize(specs_in);
-  }
-
-  ~SheetSimulation()
-  {
-    delete Dx;
-    delete Dy;
-    delete Dz;
-
-    delete vx;
-    delete vy;
-    delete vz;
-
-    delete rho;
-    delete dx_phi;
-    delete dy_phi;
-    delete dz_phi;
-    delete phi;
-    delete fourierX;
-  }
-
-  void initializeFields()
+  void _initializeFields()
   {
     if(verbosity > none)
       std::cout << "Initializing fields..." << std::endl;
@@ -567,8 +504,6 @@ public:
         break;
     }
     
-    _initialize1DUniform();
-
     // copy to _a registers as well,
     // set metric for output
     _stepInit();
@@ -608,9 +543,75 @@ public:
           real_t x_frac = ((real_t) i)/specs.ns1 - 0.5;
           Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 0.5*std::exp(-1.0*std::pow(x_frac/0.05, 2))*x_frac;
             //+0.3*std::exp(-1.0*std::pow((x_frac-.2)/0.05, 2.0))*x_frac;
-          Dy->_p(i,j,k) = 0.0;
-          Dz->_p(i,j,k) = 0.0;
         }
+  }
+
+  void initialize(const Specs specs_in)
+  {
+    specs = specs_in;
+
+    // Phase-space variables
+    Dx = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
+      specs.lx, specs.ly, specs.lz, specs.dt);
+    Dy = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
+      specs.lx, specs.ly, specs.lz, specs.dt);
+    Dz = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
+      specs.lx, specs.ly, specs.lz, specs.dt);
+    vx = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
+      specs.lx, specs.ly, specs.lz, specs.dt);
+    vy = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
+      specs.lx, specs.ly, specs.lz, specs.dt);
+    vz = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
+      specs.lx, specs.ly, specs.lz, specs.dt);
+
+    // Metric-space fields
+    rho = new array_t(specs.nx, specs.ny, specs.nz,
+      specs.lx, specs.ly, specs.lz);
+    dx_phi = new array_t(specs.nx, specs.ny, specs.nz,
+      specs.lx, specs.ly, specs.lz);
+    dy_phi = new array_t(specs.nx, specs.ny, specs.nz,
+      specs.lx, specs.ly, specs.lz);
+    dz_phi = new array_t(specs.nx, specs.ny, specs.nz,
+      specs.lx, specs.ly, specs.lz);
+    phi = new array_t(specs.nx, specs.ny, specs.nz,
+      specs.lx, specs.ly, specs.lz);
+
+    // For computing Fourier transforms
+    fourierX = new fourier_t(specs.nx, specs.ny, specs.nz,
+      specs.lx, specs.ly, specs.lz, &(*rho)[0]);
+
+    _initializeFields();
+  }
+
+  SheetSimulation(const Specs specs_in)
+  {
+    verbosity = none;
+    step = 0;
+    initialize(specs_in);
+  }
+
+  SheetSimulation(const Specs specs_in, Verbosity verbosity_in)
+  {
+    verbosity = verbosity_in;
+    initialize(specs_in);
+  }
+
+  ~SheetSimulation()
+  {
+    delete Dx;
+    delete Dy;
+    delete Dz;
+
+    delete vx;
+    delete vy;
+    delete vz;
+
+    delete rho;
+    delete dx_phi;
+    delete dy_phi;
+    delete dz_phi;
+    delete phi;
+    delete fourierX;
   }
 
   std::string toStr(real_t val)
@@ -749,6 +750,71 @@ public:
       ofs << "deposit = PCS " << std::endl;
 
     ofs.close();
+  }
+
+  void writeConstraints(std::string directory)
+  {
+    // call these to make sure data in phi, Dx, and vx are consistent
+    _stepInit();
+    _RK4Calc();
+
+    std::string filename (directory + "/constraints.dat.gz");
+
+    gzFile fi = gzopen(filename.c_str(), "ab");
+    std::string str = toStr(_computeTotalMomentum()) + "\t"
+                      + toStr(_computeTotalEnergy()) + "\n";
+    gzwrite(fi, str.c_str(), str.length());
+    gzclose(fi);
+  }
+
+  real_t _computeTotalMomentum()
+  {
+    real_t tot_x_mom = 0;
+    real_t tot_y_mom = 0;
+    real_t tot_z_mom = 0;
+
+    real_t m = 1.0 / specs.ns1 / specs.ns2 / specs.ns3;
+
+    for(idx_t i=0; i<specs.ns1; ++i)
+      for(idx_t j=0; j<specs.ns2; ++j)
+        for(idx_t k=0; k<specs.ns3; ++k)
+        {
+          tot_x_mom += (*vx)(i,j,k);
+          tot_y_mom += (*vy)(i,j,k);
+          tot_z_mom += (*vz)(i,j,k);
+        }
+
+    return m * std::sqrt(
+      std::pow(tot_x_mom,2)
+      + std::pow(tot_y_mom,2) 
+      + std::pow(tot_z_mom,2)
+    );
+  }
+
+  real_t _computeTotalEnergy()
+  {
+    real_t tot_E = 0;
+
+    real_t m = 1.0 / specs.ns1 / specs.ns2 / specs.ns3;
+
+    for(idx_t i=0; i<specs.ns1; ++i)
+      for(idx_t j=0; j<specs.ns2; ++j)
+        for(idx_t k=0; k<specs.ns3; ++k)
+        {
+          real_t v2 = std::pow((*vx)(i,j,k),2)
+            + std::pow((*vy)(i,j,k),2) 
+            + std::pow((*vz)(i,j,k),2);
+
+          real_t x = ( _S1IDXtoX0(i) + (*Dx)(i, j, k) ) / rho->dx;
+          real_t y = ( _S2IDXtoY0(j) + (*Dy)(i, j, k) ) / rho->dy;
+          real_t z = ( _S3IDXtoZ0(k) + (*Dz)(i, j, k) ) / rho->dz;
+
+          real_t potential = phi->getTriCubicInterpolatedValue(x,y,z);
+
+          tot_E += m/2.0*(v2 + potential);
+        }
+
+    return tot_E;
   }
 
 };

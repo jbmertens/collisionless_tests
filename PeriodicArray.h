@@ -261,6 +261,21 @@ public:
     return Fijk;
   }
 
+  RT xDer(RT i_in, RT j_in, RT k_in)
+  {
+    return ( _array[idx(i_in + 1, j_in, k_in)] - _array[idx(i_in - 1, j_in, k_in)] ) / 2.0 / _dx;
+  }
+
+  RT yDer(RT i_in, RT j_in, RT k_in)
+  {
+    return ( _array[idx(i_in, j_in + 1, k_in)] - _array[idx(i_in, j_in - 1, k_in)] ) / 2.0 / _dy;
+  }
+
+  RT zDer(RT i_in, RT j_in, RT k_in)
+  {
+    return ( _array[idx(i_in, j_in, k_in + 1)] - _array[idx(i_in, j_in, k_in - 1)] ) / 2.0 / _dz;
+  }
+
 };
 
 
