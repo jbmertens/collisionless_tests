@@ -4,7 +4,7 @@ Code here is a not-quite-complete implementation of the sheet method.
 
 For now, compile by doing something like:
 ```
-g++ main.cc -std=c++11 -lfftw3 -O3 -ffast-math -flto -Wall -lz -march=native
+g++ main.cc -std=c++11 -lfftw3_omp -lfftw3 -lm -flto -O3 -Wall -lz -ffast-math -march=native -fopenmp
 ```
 
 TODO:

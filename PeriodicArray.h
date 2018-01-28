@@ -5,6 +5,13 @@
 #include <stdexcept>
 #include "TriCubicInterpolator.h"
 
+#define ARRAY_LOOP(i, pts) \
+  for(IT i=0; i<pts; ++i)
+
+#define PARALLEL_ARRAY_LOOP(i, pts) \
+  _Pragma("omp parallel for") \
+  ARRAY_LOOP(i, pts)
+
 template<typename IT, typename RT>
 class PeriodicArray
 {
@@ -15,7 +22,6 @@ protected:
   RT _dx, _dy, _dz;
   IT _pts;
 
-  // TODO: __restrict__
   RT * _array;
 
 private:
@@ -38,10 +44,8 @@ private:
     _pts = _nx*_ny*_nz;
 
     _array = new RT[_pts];
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-    for(IT i=0; i<_pts; ++i)
+
+    PARALLEL_ARRAY_LOOP(i, _pts)
     {
       _array[i] = 0.0;
     }
@@ -49,7 +53,6 @@ private:
 
   IT _IT_mod(IT n, IT d) const
   {
-    // TODO: check and see if having conditional here is faster
     if ( n >= 0 && n < d )
       return n;
 
@@ -94,10 +97,17 @@ public:
     delete [] _array;
   }
 
-  IT idx(IT i_in, IT j_in, IT k_in) const // TODO
+  IT idx(IT i_in, IT j_in, IT k_in) const
   {
-    IT i=_IT_mod(i_in, _nx), j=_IT_mod(j_in, _ny), k=_IT_mod(k_in, _nz);
+    IT i = _IT_mod(i_in, _nx),
+       j = _IT_mod(j_in, _ny),
+       k = _IT_mod(k_in, _nz);
     return i*_ny*_nz + j*_nz + k;
+  }
+
+  IT npidx(IT i_in, IT j_in, IT k_in) const
+  {
+    return i_in*_ny*_nz + j_in*_nz + k_in;
   }
 
   RT& operator()(const IT & i, const IT & j, const IT & k)
@@ -127,10 +137,7 @@ public:
     this->_dy = other.dz;
     this->_pts = this->_nx*this->_ny*this->_nz;
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-    for(IT i=0; i<this->_pts; ++i)
+    PARALLEL_ARRAY_LOOP(i, this->_pts)
     {
       this->_array[i] = other._array[i];
     }
@@ -143,58 +150,46 @@ public:
     return _array[idx];
   }
 
-  RT sum()
+  RT sum() const
   {
     RT res = 0.0;
-#ifdef USE_OPENMP
+
 #pragma omp parallel for reduction(+:res)
-#endif
-    for(IT i=0; i<_pts; ++i)
+    ARRAY_LOOP(i, _pts)
     {
       res += _array[i];
     }
-    return res;
 
+    return res;
   }
   
-  RT avg()
+  RT avg() const
   {
     return sum() / (RT) _pts;
   }
 
-  RT min()
+  RT min() const
   {
     RT min_res = std::numeric_limits<RT>::max();
-#ifdef USE_OPENMP
-#pragma omp parallel for 
-#endif
-    for(IT i = 0; i<_pts; i++)
+
+    PARALLEL_ARRAY_LOOP(i,_pts)
     {
-#ifdef USE_OPENMP
 #pragma omp critical
-#endif
       if(_array[i] < min_res)
         min_res = _array[i];
     }
     return min_res;
   }
 
-  RT max()
+  RT max() const
   {
     RT max_res = std::numeric_limits<RT>::min();
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-    for(IT i = 0; i<_pts; i++)
+    PARALLEL_ARRAY_LOOP(i, _pts)
     {
-#ifdef USE_OPENMP
 #pragma omp critical
-#endif
-      {
         if(_array[i] > max_res)
           max_res = _array[i];
-      }
     }
 
     return max_res;
@@ -202,7 +197,7 @@ public:
 
   // Weighted averaging / trilinear interpolation via
   // https://en.wikipedia.org/wiki/Trilinear_interpolation#Method
-  RT getInterpolatedValue(RT i_in, RT j_in, RT k_in)
+  RT getInterpolatedValue(RT i_in, RT j_in, RT k_in) const
   {
     IT il = i_in < 0 ? (IT) i_in - 1 : (IT) i_in; // Index "left" of i
     RT id = i_in - il; // fractional difference
@@ -221,15 +216,14 @@ public:
     return c0*(1-kd) + c1*kd;
   }
 
-  RT getTriCubicInterpolatedValue(RT i_in, RT j_in, RT k_in)
+  RT getTriCubicInterpolatedValue(RT i_in, RT j_in, RT k_in) const
   {
-    // TODO: consider higher order interpolation methods
     return getCINTTriCubicInterpolatedValue(i_in, j_in, k_in);
-    return getLMTriCubicInterpolatedValue(i_in, j_in, k_in);
+    // return getLMTriCubicInterpolatedValue(i_in, j_in, k_in);
   }
 
   // Lekien-Marsden cubic spline
-  RT getLMTriCubicInterpolatedValue(RT i_in, RT j_in, RT k_in)
+  RT getLMTriCubicInterpolatedValue(RT i_in, RT j_in, RT k_in) const
   {
     IT il = i_in < 0 ? (IT) i_in - 1 : (IT) i_in; // Index "left" of i
     RT id = i_in - il; // fractional difference
@@ -253,7 +247,7 @@ public:
   }
 
   // Catmull-Rom cubic spline
-  RT CINT(RT u, RT p0, RT p1, RT p2, RT p3)
+  RT CINT(RT u, RT p0, RT p1, RT p2, RT p3) const
   {
     return 0.5*(
           (u*u*(2.0 - u) - u)*p0
@@ -263,9 +257,8 @@ public:
       );
   }
 
-  RT getCINTTriCubicInterpolatedValue(RT i_in, RT j_in, RT k_in)
+  RT getCINTTriCubicInterpolatedValue(RT i_in, RT j_in, RT k_in) const
   {
-    // TODO: consider higher order interpolation methods
     IT il = i_in < 0 ? (IT) i_in - 1 : (IT) i_in; // Index "left" of i
     RT id = i_in - il; // fractional difference
     IT jl = j_in < 0 ? (IT) j_in - 1 : (IT) j_in; // same as ^ but j
@@ -295,7 +288,7 @@ public:
     return Fijk;
   }
 
-  RT xDer(RT i_in, RT j_in, RT k_in)
+  RT xDer(RT i_in, RT j_in, RT k_in) const
   {
     return (
       + 1.0/12.0*_array[idx(i_in - 2, j_in, k_in)]
@@ -305,7 +298,7 @@ public:
     ) / _dx;
   }
 
-  RT yDer(RT i_in, RT j_in, RT k_in)
+  RT yDer(RT i_in, RT j_in, RT k_in) const
   {
     return (
       + 1.0/12.0*_array[idx(i_in, j_in - 2, k_in)]
@@ -315,7 +308,7 @@ public:
     ) / _dy;
   }
 
-  RT zDer(RT i_in, RT j_in, RT k_in)
+  RT zDer(RT i_in, RT j_in, RT k_in) const
   {
     return (
      + 1.0/12.0*_array[idx(i_in, j_in, k_in - 2)]
@@ -325,7 +318,7 @@ public:
     ) / _dz;
   }
 
-  RT xxDer(RT i_in, RT j_in, RT k_in)
+  RT xxDer(RT i_in, RT j_in, RT k_in) const
   {
     return (
       - 1.0/12.0*_array[idx(i_in + 2, j_in, k_in)]
@@ -336,7 +329,7 @@ public:
     ) / _dx / _dx;
   }
 
-  RT yyDer(RT i_in, RT j_in, RT k_in)
+  RT yyDer(RT i_in, RT j_in, RT k_in) const
   {
     return (
       - 1.0/12.0*_array[idx(i_in, j_in + 2, k_in)]
@@ -347,7 +340,7 @@ public:
     ) / _dy / _dy;
   }
 
-  RT zzDer(RT i_in, RT j_in, RT k_in)
+  RT zzDer(RT i_in, RT j_in, RT k_in) const
   {
     return (
       - 1.0/12.0*_array[idx(i_in, j_in, k_in + 2)]
@@ -358,7 +351,7 @@ public:
     ) / _dz / _dz;
   }
 
-  RT xyDer(RT i_in, RT j_in, RT k_in)
+  RT xyDer(RT i_in, RT j_in, RT k_in) const
   {
     return (
       _array[idx(i_in + 1, j_in + 1, k_in)]
@@ -374,7 +367,7 @@ public:
     ) / 3.0 / _dx / _dy;
   }
 
-  RT xzDer(RT i_in, RT j_in, RT k_in)
+  RT xzDer(RT i_in, RT j_in, RT k_in) const
   {
     return (
       _array[idx(i_in + 1, j_in, k_in + 1)]
@@ -390,7 +383,7 @@ public:
     ) / 3.0 / _dx / _dz;
   }
 
-  RT yzDer(RT i_in, RT j_in, RT k_in)
+  RT yzDer(RT i_in, RT j_in, RT k_in) const
   {
     return (
       _array[idx(i_in, j_in + 1, k_in + 1)]

@@ -2,7 +2,7 @@
 #define TRICUBICINTERPOLATOR_H
 
 template<typename RT>
-void compute_tricubic_coeffs(RT a[64], RT f[64]) // function values at 64 points
+void compute_tricubic_coeffs(RT * __restrict__ a, RT * __restrict__ f)
 {
   a[0] = f[21];
   a[1] = -f[20]/3. - f[21]/2. + f[22] - f[23]/6.;
@@ -71,7 +71,7 @@ void compute_tricubic_coeffs(RT a[64], RT f[64]) // function values at 64 points
 }
 
 template<typename RT>
-RT evaluate_interpolation(RT a[64], RT x, RT y, RT z)
+RT evaluate_interpolation(RT * a, RT x, RT y, RT z)
 {
 #define P2(x) x*x
 #define P3(x) x*x*x

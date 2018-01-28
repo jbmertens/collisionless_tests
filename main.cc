@@ -1,3 +1,4 @@
+#define USE_OPENMP true
 
 #include "sheet.h"
 #include <iostream>
@@ -15,10 +16,9 @@ void runSim(SheetSimulation::Specs specs, std::string out_base_dir,
 
   std::cout << std::setprecision(17);
   std::cout << "Initializing new sheet class with dir " << out_base_dir
-    << "..." << std::flush;
+    << "." << std::endl;
   SheetSimulation sheet (specs, SheetSimulation::Verbosity::none);
   sheet.writeInfo(out_base_dir);
-  std::cout << " done." << std::endl;
 
   for(int t=0; t<=t_steps; ++t)
   {
@@ -168,7 +168,7 @@ void runGaussianField(SheetSimulation::Specs specs)
   SheetSimulation::Specs specs_alt = {0};
 
   specs_alt = specs;
-  runSim(specs_alt, "sim_GRF", 50, true);
+  runSim(specs_alt, "sim_GRF", 100, true);
 }
 
 
@@ -187,9 +187,9 @@ int main(int argc, char **argv)
   specs.deposit = SheetSimulation::depositScheme::PCS;
   specs.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_dx;
 
-  runOverdensityTests(specs);
+  // runOverdensityTests(specs);
   // runUniformTests(specs);
-  // runGaussianField(specs);
+  runGaussianField(specs);
 
   return 0;
 }

@@ -34,6 +34,20 @@
 #include <iomanip>
 #include <fstream>
 
+#define SHEET_LOOP(i, pts) \
+  for(i=0; i<pts; ++i)
+
+#define SHEET_LOOP3(i, j, k, ni, nj, nk) \
+  SHEET_LOOP(i, ni) SHEET_LOOP(j, nj) SHEET_LOOP(k, nk) \
+
+#define PARALLEL_SHEET_LOOP(i, pts) \
+  _Pragma("omp parallel for") \
+  SHEET_LOOP(i, pts)
+
+#define PARALLEL_SHEET_LOOP3(i, j, k, ni, nj, nk) \
+  _Pragma("omp parallel for collapse(3)") \
+  SHEET_LOOP3(i, j, k, ni, nj, nk)
+
 /**
  * Class used to run a sheet sim.
  */
@@ -258,8 +272,6 @@ public:
    */
   void _pushSheetMassToRho(idx_t s1, idx_t s2, idx_t s3)
   {
-    _timer["_pushSheetMassToRho"].start();
-
     idx_t num_x_carriers, num_y_carriers, num_z_carriers;
 
     switch(specs.carrier_count_scheme)
@@ -345,8 +357,6 @@ public:
             _MassDeposit(weight, carrier_x_idx, carrier_y_idx, carrier_z_idx, false);
           }
     }
-
-    _timer["_pushSheetMassToRho"].stop();
   }
 
   /**
@@ -354,7 +364,6 @@ public:
    */
   void _setMetricPotential()
   {
-    _timer["_setMetricPotential"].start();
     if(verbosity == debug)
     {
       std::cout << "  Setting Metric potentials...";
@@ -369,44 +378,33 @@ public:
     {
       std::cout << " done." << std::endl;
     }
-    _timer["_setMetricPotential"].stop();
   }
 
   void _setMetricDerivative(int dir)
   {
-    _timer["_setMetricDerivative"].start();
-
     idx_t i, j, k;
 
     switch (dir)
     {
       case 1:
-        for(i=0; i<specs.nx; ++i)
-          for(j=0; j<specs.ny; ++j)
-            for(k=0; k<specs.nz; ++k)
-              (*d_phi)(i, j, k) = phi->xDer(i,j,k);
+        PARALLEL_SHEET_LOOP3(i, j, k, specs.nx, specs.ny, specs.nz)
+          (*d_phi)(i, j, k) = phi->xDer(i,j,k);
         break;
 
       case 2:
-        for(i=0; i<specs.nx; ++i)
-          for(j=0; j<specs.ny; ++j)
-            for(k=0; k<specs.nz; ++k)
-              (*d_phi)(i, j, k) = phi->yDer(i,j,k);
+        PARALLEL_SHEET_LOOP3(i, j, k, specs.nx, specs.ny, specs.nz)
+          (*d_phi)(i, j, k) = phi->yDer(i,j,k);
         break;
       
       case 3:
-        for(i=0; i<specs.nx; ++i)
-          for(j=0; j<specs.ny; ++j)
-            for(k=0; k<specs.nz; ++k)
-              (*d_phi)(i, j, k) = phi->zDer(i,j,k);
+        PARALLEL_SHEET_LOOP3(i, j, k, specs.nx, specs.ny, specs.nz)
+          (*d_phi)(i, j, k) = phi->zDer(i,j,k);
         break;
 
       default:
         std::cout << "Invalid derivative direction!" << std::endl;
         break;
     }
-
-    _timer["_setMetricDerivative"].stop();
   }
 
   /**
@@ -420,73 +418,77 @@ public:
     // density projection
     // clear rho
     if(verbosity == debug) std::cout << "  Performing density projection..." << std::flush;
-    for(idx_t p=0; p<rho->nx*rho->ny*rho->nz; ++p)
+    _timer["_RK4Calc:pushSheetMassToRho"].start();
+
+    idx_t p;
+    PARALLEL_SHEET_LOOP(p, rho->nx*rho->ny*rho->nz)
       (*rho)[p] = 0;
-    for(i=0; i<specs.ns1; ++i)
-      for(j=0; j<specs.ns2; ++j)
-        for(k=0; k<specs.ns3; ++k)
-          _pushSheetMassToRho(i, j, k);
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+      _pushSheetMassToRho(i, j, k);
+
+    _timer["_RK4Calc:_pushSheetMassToRho"].stop();
     if(verbosity == debug) std::cout << " done." << std::endl << std::flush;
 
+
     // Metric potential from density
+    _timer["_RK4Calc:_setMetricPotential"].start();
     _setMetricPotential();
+    _timer["_RK4Calc:_setMetricPotential"].stop();
 
     // RK4 calculation
     if(verbosity == debug) std::cout << "  Performing RK4 calculation..." << std::flush;
 
     // position evolution
     _timer["_RK4Calc:x_Evaluation"].start();
-    for(i=0; i<specs.ns1; ++i)
-      for(j=0; j<specs.ns2; ++j)
-        for(k=0; k<specs.ns3; ++k)
-        {
-          Dx->_c(i,j,k) = vx->_a(i,j,k);
-          Dy->_c(i,j,k) = vy->_a(i,j,k);
-          Dz->_c(i,j,k) = vz->_a(i,j,k);
-        }
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+    {
+      Dx->_c(i,j,k) = vx->_a(i,j,k);
+      Dy->_c(i,j,k) = vy->_a(i,j,k);
+      Dz->_c(i,j,k) = vz->_a(i,j,k);
+    }
     _timer["_RK4Calc:x_Evaluation"].stop();
 
     // set d_phi to be dx_phi
+    _timer["_RK4Calc:_setMetricDerivative"].start();
     _setMetricDerivative(1);
+    _timer["_RK4Calc:_setMetricDerivative"].stop();
     _timer["_RK4Calc:v_Evaluation"].start();
-    for(i=0; i<specs.ns1; ++i)
-      for(j=0; j<specs.ns2; ++j)
-        for(k=0; k<specs.ns3; ++k)
-        {
-          real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
-          real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
-          real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
-          vx->_c(i,j,k) = -1.0*d_phi->getTriCubicInterpolatedValue(
-            x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
-        }
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+    {
+      real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
+      real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
+      real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
+      vx->_c(i,j,k) = -1.0*d_phi->getTriCubicInterpolatedValue(
+        x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
+    }
     _timer["_RK4Calc:v_Evaluation"].stop();
     // set d_phi to be dy_phi
+    _timer["_RK4Calc:_setMetricDerivative"].start();
     _setMetricDerivative(2);
+    _timer["_RK4Calc:_setMetricDerivative"].stop();
     _timer["_RK4Calc:v_Evaluation"].start();
-    for(i=0; i<specs.ns1; ++i)
-      for(j=0; j<specs.ns2; ++j)
-        for(k=0; k<specs.ns3; ++k)
-        {
-          real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
-          real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
-          real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
-          vy->_c(i,j,k) = -1.0*d_phi->getTriCubicInterpolatedValue(
-            x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
-        }
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+    {
+      real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
+      real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
+      real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
+      vy->_c(i,j,k) = -1.0*d_phi->getTriCubicInterpolatedValue(
+        x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
+    }
     _timer["_RK4Calc:v_Evaluation"].stop();
     // set d_phi to be dz_phi
+    _timer["_RK4Calc:_setMetricDerivative"].start();
     _setMetricDerivative(3);
+    _timer["_RK4Calc:_setMetricDerivative"].stop();
     _timer["_RK4Calc:v_Evaluation"].start();
-    for(i=0; i<specs.ns1; ++i)
-      for(j=0; j<specs.ns2; ++j)
-        for(k=0; k<specs.ns3; ++k)
-        {
-          real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
-          real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
-          real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
-          vz->_c(i,j,k) = -1.0*d_phi->getTriCubicInterpolatedValue(
-            x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
-        }
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+    {
+      real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
+      real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
+      real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
+      vz->_c(i,j,k) = -1.0*d_phi->getTriCubicInterpolatedValue(
+        x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
+    }
     _timer["_RK4Calc:v_Evaluation"].stop();
 
     if(verbosity == debug) std::cout << " done." << std::endl << std::flush;
@@ -575,6 +577,7 @@ public:
   {
     if(verbosity > none)
       std::cout << "Initializing fields..." << std::endl;
+    _timer["_initializeFields"].start();
 
     switch(specs.initialization_type)
     {
@@ -600,42 +603,41 @@ public:
     // set metric for output
     _stepInit();
     _RK4Calc();
+    
+    _timer["_initializeFields"].stop();
   }
 
   void _initialize1DUniform()
   {
     // position fields should just be coordinates
-    for(idx_t i=0; i<specs.ns1; i++)
-      for(idx_t j=0; j<specs.ns2; j++)
-        for(idx_t k=0; k<specs.ns3; k++)
-        {
-          Dx->_p(i,j,k) = 1.0/specs.nx/5.0;
-        }
+    idx_t i, j, k;
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+    {
+      Dx->_p(i,j,k) = 1.0/specs.nx/5.0;
+    }
   }
 
   void _initialize1DUniformMoving()
   {
     // position fields should just be coordinates
-    for(idx_t i=0; i<specs.ns1; i++)
-      for(idx_t j=0; j<specs.ns2; j++)
-        for(idx_t k=0; k<specs.ns3; k++)
-        {
-          Dx->_p(i,j,k) = 1.0/specs.nx/5.0;
-          vx->_p(i,j,k) = 0.01;
-        }
+    idx_t i, j, k;
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+    {
+      Dx->_p(i,j,k) = 1.0/specs.nx/5.0;
+      vx->_p(i,j,k) = 0.01;
+    }
   }
 
   void _initialize1DOverdensity()
   {
     // position fields should just be coordinates
-    for(idx_t i=0; i<specs.ns1; i++)
-      for(idx_t j=0; j<specs.ns2; j++)
-        for(idx_t k=0; k<specs.ns3; k++)
-        {
-          real_t x_frac = ((real_t) i)/specs.ns1 - 0.5;
-          Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 0.5*std::exp(-1.0*std::pow(x_frac/0.05, 2))*x_frac;
-            //+0.3*std::exp(-1.0*std::pow((x_frac-.2)/0.05, 2.0))*x_frac;
-        }
+    idx_t i, j, k;
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+    {
+      real_t x_frac = ((real_t) i)/specs.ns1 - 0.5;
+      Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 0.5*std::exp(-1.0*std::pow(x_frac/0.05, 2))*x_frac;
+        //+0.3*std::exp(-1.0*std::pow((x_frac-.2)/0.05, 2.0))*x_frac;
+    }
   }
 
   /**
@@ -644,17 +646,16 @@ public:
    */
   void setVDFrom2LPTPhi1(RK4_t * v, RK4_t * D, int n)
   {
+    idx_t i, j, k;
     _setMetricDerivative(n);
-    for(idx_t i=0; i<specs.ns1; i++)
-      for(idx_t j=0; j<specs.ns2; j++)
-        for(idx_t k=0; k<specs.ns3; k++)
-        {
-          real_t x0_idx = _S1IDXtoX0(i)/Dx->dx, y0_idx = _S2IDXtoY0(j)/Dy->dy,
-            z0_idx = _S3IDXtoZ0(k)/Dz->dz;
-          real_t dphi = d_phi->getTriCubicInterpolatedValue(x0_idx, y0_idx, z0_idx);
-          D->_p(i,j,k) = -dphi;
-          v->_p(i,j,k) = -dphi;
-        }
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+    {
+      real_t x0_idx = _S1IDXtoX0(i)/Dx->dx, y0_idx = _S2IDXtoY0(j)/Dy->dy,
+        z0_idx = _S3IDXtoZ0(k)/Dz->dz;
+      real_t dphi = d_phi->getTriCubicInterpolatedValue(x0_idx, y0_idx, z0_idx);
+      D->_p(i,j,k) = -dphi;
+      v->_p(i,j,k) = -dphi;
+    }
   }
 
   /**
@@ -663,19 +664,18 @@ public:
    */
   void _compute2LPTDelta2()
   {
-    for(idx_t i=0; i<specs.nx; i++)
-      for(idx_t j=0; j<specs.ny; j++)
-        for(idx_t k=0; k<specs.nz; k++)
-        {
-          (*rho)(i,j,k) = (
-            phi->yyDer(i,j,k)*phi->xxDer(i,j,k)
-            + phi->zzDer(i,j,k)*phi->xxDer(i,j,k)
-            + phi->zzDer(i,j,k)*phi->yyDer(i,j,k)
-            - std::pow(phi->xyDer(i,j,k), 2)
-            - std::pow(phi->xzDer(i,j,k), 2)
-            - std::pow(phi->yzDer(i,j,k), 2)
-          );
-        }
+    idx_t i, j, k;
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.nx, specs.ny, specs.nz)
+    {
+      (*rho)(i,j,k) = (
+        phi->yyDer(i,j,k)*phi->xxDer(i,j,k)
+        + phi->zzDer(i,j,k)*phi->xxDer(i,j,k)
+        + phi->zzDer(i,j,k)*phi->yyDer(i,j,k)
+        - std::pow(phi->xyDer(i,j,k), 2)
+        - std::pow(phi->xzDer(i,j,k), 2)
+        - std::pow(phi->yzDer(i,j,k), 2)
+      );
+    }
   }
 
   /**
@@ -684,17 +684,16 @@ public:
    */
   void setVDFrom2LPTPhi2(RK4_t * v, RK4_t * D, int n)
   {
+    idx_t i, j, k;
     _setMetricDerivative(n);
-    for(idx_t i=0; i<specs.ns1; i++)
-      for(idx_t j=0; j<specs.ns2; j++)
-        for(idx_t k=0; k<specs.ns3; k++)
-        {
-          real_t x0_idx = _S1IDXtoX0(i)/Dx->dx, y0_idx = _S2IDXtoY0(j)/Dy->dy,
-            z0_idx = _S3IDXtoZ0(k)/Dz->dz;
-          real_t dphi = d_phi->getTriCubicInterpolatedValue(x0_idx, y0_idx, z0_idx);
-          D->_p(i,j,k) += dphi;
-          v->_p(i,j,k) += dphi;
-        }
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+    {
+      real_t x0_idx = _S1IDXtoX0(i)/Dx->dx, y0_idx = _S2IDXtoY0(j)/Dy->dy,
+        z0_idx = _S3IDXtoZ0(k)/Dz->dz;
+      real_t dphi = d_phi->getTriCubicInterpolatedValue(x0_idx, y0_idx, z0_idx);
+      D->_p(i,j,k) += dphi;
+      v->_p(i,j,k) += dphi;
+    }
   }
 
   void _initializeGaussianRandom()
@@ -907,6 +906,7 @@ public:
 
   void writeConstraints(std::string directory)
   {
+    _timer["writeConstraints"].start();
     // call these to make sure data in phi, Dx, and vx are consistent
     _stepInit();
     _RK4Calc();
@@ -918,6 +918,7 @@ public:
                       + toStr(_computeTotalEnergy()) + "\n";
     gzwrite(fi, str.c_str(), str.length());
     gzclose(fi);
+    _timer["writeConstraints"].stop();
   }
 
   real_t _computeTotalMomentum()
@@ -928,6 +929,8 @@ public:
 
     real_t m = 1.0 / specs.ns1 / specs.ns2 / specs.ns3;
 
+#pragma omp parallel for collapse(3) reduction(+:tot_x_mom) \
+  reduction(+:tot_y_mom) reduction(+:tot_z_mom)
     for(idx_t i=0; i<specs.ns1; ++i)
       for(idx_t j=0; j<specs.ns2; ++j)
         for(idx_t k=0; k<specs.ns3; ++k)
@@ -950,6 +953,7 @@ public:
 
     real_t m = 1.0 / specs.ns1 / specs.ns2 / specs.ns3;
 
+#pragma omp parallel for collapse(3) reduction(+:tot_E)
     for(idx_t i=0; i<specs.ns1; ++i)
       for(idx_t j=0; j<specs.ns2; ++j)
         for(idx_t k=0; k<specs.ns3; ++k)
