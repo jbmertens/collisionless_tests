@@ -56,7 +56,7 @@ public:
 
   enum depositScheme { CIC, PCS };
   enum carrierCountScheme { per_dx, per_ds };
-  enum initializationType { uniform1d, uniform1dv, overdensity1d };
+  enum initializationType { uniform1d, uniform1dv, overdensity1d, gaussian_random };
 
   // Simulation information
   struct Specs
@@ -85,9 +85,8 @@ public:
 
   // Metric-space fields
   array_t *rho; ///< Metric-space density
-  array_t *dx_phi, *dy_phi, *dz_phi; ///< Metric-space derivatives of metric
-                                     ///< (Newtonian potential)
   array_t *phi; ///< Gravitational potential
+  array_t *d_phi; ///< Metric-space derivatives of metric (Newtonian potential)
 
   fourier_t * fourierX; ///< FFT in metric space
 
@@ -109,6 +108,7 @@ public:
   real_t _S2IDXtoY0(real_t s2) { return s2*specs.ly/specs.ns2; }
   real_t _S3IDXtoZ0(real_t s3) { return s3*specs.lz/specs.ns3; }
 
+  // TODO: 2nd-order or higher kernels?
   void _MassDeposit(real_t weight, real_t x_idx, real_t y_idx, real_t z_idx,
     bool announce)
   {
@@ -254,7 +254,7 @@ public:
    * Compute conribution to rho(x) from data in a phase-space
    * sheet voxel and add to rho(x) grid. Do so via 1501.01959 mass
    * deposition scheme.
-   * TODO: improve; consider higher-order or analytic versions of this
+   * TODO: improve; consider higher-order or analytic versions of this?
    */
   void _pushSheetMassToRho(idx_t s1, idx_t s2, idx_t s3)
   {
@@ -292,7 +292,7 @@ public:
     }
 
     real_t weight = 1.0 / (real_t) num_carriers
-      * specs.nx*specs.ny*specs.nz / specs.ns1/specs.ns2/specs.ns3;
+     / rho->dx/rho->dy/rho->dz / specs.ns1/specs.ns2/specs.ns3;
 
     // distribute mass from all carriers
     idx_t i, j, k;
@@ -300,16 +300,28 @@ public:
       for(j=0; j<num_y_carriers; ++j)
         for(k=0; k<num_z_carriers; ++k)
         {
-          real_t carrier_s1 = (real_t) s1 + (real_t) i / (real_t) num_x_carriers;
-          real_t carrier_s2 = (real_t) s2 + (real_t) j / (real_t) num_y_carriers;
-          real_t carrier_s3 = (real_t) s3 + (real_t) k / (real_t) num_z_carriers;
+          real_t carrier_s1 = 0, carrier_s2 = 0, carrier_s3 = 0;
+          real_t carrier_x_idx, carrier_y_idx, carrier_z_idx;
+          
+          if(i==0 && j==0 && k==0)
+          {
+            carrier_x_idx = ( _S1IDXtoX0(s1) + (*Dx)(s1, s2, s3) ) / rho->dx;
+            carrier_y_idx = ( _S2IDXtoY0(s2) + (*Dy)(s1, s2, s3) ) / rho->dy;
+            carrier_z_idx = ( _S3IDXtoZ0(s3) + (*Dz)(s1, s2, s3) ) / rho->dz;
+          }
+          else
+          {
+            carrier_s1 = (real_t) s1 + (real_t) i / (real_t) num_x_carriers;
+            carrier_s2 = (real_t) s2 + (real_t) j / (real_t) num_y_carriers;
+            carrier_s3 = (real_t) s3 + (real_t) k / (real_t) num_z_carriers;
 
-          real_t carrier_x_idx = ( _S1IDXtoX0(carrier_s1)
-            + Dx->getTriCubicInterpolatedValue(carrier_s1, carrier_s2, carrier_s3) ) / rho->dx;
-          real_t carrier_y_idx = ( _S2IDXtoY0(carrier_s2)
-            + Dy->getTriCubicInterpolatedValue(carrier_s1, carrier_s2, carrier_s3) ) / rho->dy;
-          real_t carrier_z_idx = ( _S3IDXtoZ0(carrier_s3)
-            + Dz->getTriCubicInterpolatedValue(carrier_s1, carrier_s2, carrier_s3) ) / rho->dz;
+            carrier_x_idx = ( _S1IDXtoX0(carrier_s1)
+              + Dx->getTriCubicInterpolatedValue(carrier_s1, carrier_s2, carrier_s3) ) / rho->dx;
+            carrier_y_idx = ( _S2IDXtoY0(carrier_s2)
+              + Dy->getTriCubicInterpolatedValue(carrier_s1, carrier_s2, carrier_s3) ) / rho->dy;
+            carrier_z_idx = ( _S3IDXtoZ0(carrier_s3)
+              + Dz->getTriCubicInterpolatedValue(carrier_s1, carrier_s2, carrier_s3) ) / rho->dz;
+          }
 
           bool announce = false;
           if(verbosity == debug && /*s1==s1_dbg &&*/ s2==s2_dbg && s3==s3_dbg)
@@ -330,9 +342,9 @@ public:
   /**
    * Set metric potentials (or really just derivatives thereof)
    */
-  void _setMetricPotentials()
+  void _setMetricPotential()
   {
-    _timer["_setMetricPotentials"].start();
+    _timer["_setMetricPotential"].start();
     if(verbosity == debug)
     {
       std::cout << "  Setting Metric potentials...";
@@ -343,20 +355,48 @@ public:
     *phi = *rho;
     fourierX->inverseLaplacian(&(*phi)[0]); // &(*phi)[0] is pointer to phi's internal array
 
-    for(idx_t i=0; i<specs.nx; ++i)
-      for(idx_t j=0; j<specs.ny; ++j)
-        for(idx_t k=0; k<specs.nz; ++k)
-        {
-          (*dx_phi)(i, j, k) = phi->xDer(i,j,k);
-          (*dy_phi)(i, j, k) = phi->yDer(i,j,k);
-          (*dz_phi)(i, j, k) = phi->zDer(i,j,k);
-        }
-
     if(verbosity == debug)
     {
       std::cout << " done." << std::endl;
     }
-    _timer["_setMetricPotentials"].stop();
+    _timer["_setMetricPotential"].stop();
+  }
+
+  void _setMetricDerivative(int dir)
+  {
+    _timer["_setMetricDerivative"].start();
+
+    idx_t i, j, k;
+
+    switch (dir)
+    {
+      case 1:
+        for(i=0; i<specs.nx; ++i)
+          for(j=0; j<specs.ny; ++j)
+            for(k=0; k<specs.nz; ++k)
+              (*d_phi)(i, j, k) = phi->xDer(i,j,k);
+        break;
+
+      case 2:
+        for(i=0; i<specs.nx; ++i)
+          for(j=0; j<specs.ny; ++j)
+            for(k=0; k<specs.nz; ++k)
+              (*d_phi)(i, j, k) = phi->yDer(i,j,k);
+        break;
+      
+      case 3:
+        for(i=0; i<specs.nx; ++i)
+          for(j=0; j<specs.ny; ++j)
+            for(k=0; k<specs.nz; ++k)
+              (*d_phi)(i, j, k) = phi->zDer(i,j,k);
+        break;
+
+      default:
+        std::cout << "Invalid derivative direction!" << std::endl;
+        break;
+    }
+
+    _timer["_setMetricDerivative"].stop();
   }
 
   /**
@@ -379,10 +419,13 @@ public:
     if(verbosity == debug) std::cout << " done." << std::endl << std::flush;
 
     // Metric potential from density
-    _setMetricPotentials();
+    _setMetricPotential();
 
     // RK4 calculation
     if(verbosity == debug) std::cout << "  Performing RK4 calculation..." << std::flush;
+
+    // position evolution
+    _timer["_RK4Calc:x_Evaluation"].start();
     for(i=0; i<specs.ns1; ++i)
       for(j=0; j<specs.ns2; ++j)
         for(k=0; k<specs.ns3; ++k)
@@ -390,17 +433,52 @@ public:
           Dx->_c(i,j,k) = vx->_a(i,j,k);
           Dy->_c(i,j,k) = vy->_a(i,j,k);
           Dz->_c(i,j,k) = vz->_a(i,j,k);
+        }
+    _timer["_RK4Calc:x_Evaluation"].stop();
 
+    // set d_phi to be dx_phi
+    _setMetricDerivative(1);
+    _timer["_RK4Calc:v_Evaluation"].start();
+    for(i=0; i<specs.ns1; ++i)
+      for(j=0; j<specs.ns2; ++j)
+        for(k=0; k<specs.ns3; ++k)
+        {
           real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
           real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
           real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
-          vx->_c(i,j,k) = -1.0*dx_phi->getTriCubicInterpolatedValue(
-            x_pt/dx_phi->dx, y_pt/dx_phi->dy, z_pt/dx_phi->dz);
-          vy->_c(i,j,k) = -1.0*dy_phi->getTriCubicInterpolatedValue(
-            x_pt/dy_phi->dx, y_pt/dy_phi->dy, z_pt/dy_phi->dz);
-          vz->_c(i,j,k) = -1.0*dz_phi->getTriCubicInterpolatedValue(
-            x_pt/dz_phi->dx, y_pt/dz_phi->dy, z_pt/dz_phi->dz);
+          vx->_c(i,j,k) = -1.0*d_phi->getTriCubicInterpolatedValue(
+            x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
         }
+    _timer["_RK4Calc:v_Evaluation"].stop();
+    // set d_phi to be dy_phi
+    _setMetricDerivative(2);
+    _timer["_RK4Calc:v_Evaluation"].start();
+    for(i=0; i<specs.ns1; ++i)
+      for(j=0; j<specs.ns2; ++j)
+        for(k=0; k<specs.ns3; ++k)
+        {
+          real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
+          real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
+          real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
+          vy->_c(i,j,k) = -1.0*d_phi->getTriCubicInterpolatedValue(
+            x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
+        }
+    _timer["_RK4Calc:v_Evaluation"].stop();
+    // set d_phi to be dz_phi
+    _setMetricDerivative(3);
+    _timer["_RK4Calc:v_Evaluation"].start();
+    for(i=0; i<specs.ns1; ++i)
+      for(j=0; j<specs.ns2; ++j)
+        for(k=0; k<specs.ns3; ++k)
+        {
+          real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
+          real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
+          real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
+          vz->_c(i,j,k) = -1.0*d_phi->getTriCubicInterpolatedValue(
+            x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
+        }
+    _timer["_RK4Calc:v_Evaluation"].stop();
+
     if(verbosity == debug) std::cout << " done." << std::endl << std::flush;
     _timer["_RK4Calc"].stop();
   }
@@ -498,6 +576,10 @@ public:
         _initialize1DUniformMoving();
         break;
 
+      case gaussian_random :
+        _initializeGaussianRandom();
+        break;
+
       case overdensity1d :
       default :
         _initialize1DOverdensity();
@@ -546,6 +628,91 @@ public:
         }
   }
 
+  /**
+   * @brief   Compute dn_phi and set v->_p and x->_p for a given n = 1, 2, 3
+   * @details    Called by _initializeGaussianRandom().
+   */
+  void setVDFrom2LPTPhi1(RK4_t * v, RK4_t * D, int n)
+  {
+    _setMetricDerivative(n);
+    for(idx_t i=0; i<specs.ns1; i++)
+      for(idx_t j=0; j<specs.ns2; j++)
+        for(idx_t k=0; k<specs.ns3; k++)
+        {
+          real_t x0_idx = _S1IDXtoX0(i)/Dx->dx, y0_idx = _S2IDXtoY0(j)/Dy->dy,
+            z0_idx = _S3IDXtoZ0(k)/Dz->dz;
+          real_t dphi = d_phi->getTriCubicInterpolatedValue(x0_idx, y0_idx, z0_idx);
+          D->_p(i,j,k) = -dphi;
+          v->_p(i,j,k) = -dphi;
+        }
+  }
+
+  /**
+   * @brief      Compute 2LPT delta_2 variable (and store in rho)
+   *   from phi_1 (stored in phi)
+   */
+  void _compute2LPTDelta2()
+  {
+    for(idx_t i=0; i<specs.nx; i++)
+      for(idx_t j=0; j<specs.ny; j++)
+        for(idx_t k=0; k<specs.nz; k++)
+        {
+          (*rho)(i,j,k) = (
+            phi->yyDer(i,j,k)*phi->xxDer(i,j,k)
+            + phi->zzDer(i,j,k)*phi->xxDer(i,j,k)
+            + phi->zzDer(i,j,k)*phi->yyDer(i,j,k)
+            - std::pow(phi->xyDer(i,j,k), 2)
+            - std::pow(phi->xzDer(i,j,k), 2)
+            - std::pow(phi->yzDer(i,j,k), 2)
+          );
+        }
+  }
+
+  /**
+   * @brief   Compute dn_phi and add 2LPT phi_2 contribution to v->_p and x->_p
+   * @details    Called by _initializeGaussianRandom().
+   */
+  void setVDFrom2LPTPhi2(RK4_t * v, RK4_t * D, int n)
+  {
+    _setMetricDerivative(n);
+    for(idx_t i=0; i<specs.ns1; i++)
+      for(idx_t j=0; j<specs.ns2; j++)
+        for(idx_t k=0; k<specs.ns3; k++)
+        {
+          real_t x0_idx = _S1IDXtoX0(i)/Dx->dx, y0_idx = _S2IDXtoY0(j)/Dy->dy,
+            z0_idx = _S3IDXtoZ0(k)/Dz->dz;
+          real_t dphi = d_phi->getTriCubicInterpolatedValue(x0_idx, y0_idx, z0_idx);
+          D->_p(i,j,k) += dphi;
+          v->_p(i,j,k) += dphi;
+        }
+  }
+
+  void _initializeGaussianRandom()
+  {
+    // consider perturbations to be given by 2LPT:
+    // https://arxiv.org/pdf/0910.0258.pdf
+    // General alg. requires computing phi_1 and phi_2.
+
+    // gaussian random realization of rho
+    fourierX->gaussianRandomRealization(&(*rho)[0]);
+
+    // Compute phi_1 contribution in phi
+    _setMetricPotential();
+    // add contribution to Dx, Vx from phi_1, " with y, z
+    setVDFrom2LPTPhi1(vx, Dx, 1);
+    setVDFrom2LPTPhi1(vy, Dy, 2);
+    setVDFrom2LPTPhi1(vz, Dz, 3);
+
+    // Compute delta_2 in rho
+    _compute2LPTDelta2();
+    // set phi_2 per this density
+    _setMetricPotential();
+    // add contribution from phi_2
+    setVDFrom2LPTPhi2(vx, Dx, 1);
+    setVDFrom2LPTPhi2(vy, Dy, 2);
+    setVDFrom2LPTPhi2(vz, Dz, 3);
+  }
+
   void initialize(const Specs specs_in)
   {
     specs = specs_in;
@@ -567,11 +734,7 @@ public:
     // Metric-space fields
     rho = new array_t(specs.nx, specs.ny, specs.nz,
       specs.lx, specs.ly, specs.lz);
-    dx_phi = new array_t(specs.nx, specs.ny, specs.nz,
-      specs.lx, specs.ly, specs.lz);
-    dy_phi = new array_t(specs.nx, specs.ny, specs.nz,
-      specs.lx, specs.ly, specs.lz);
-    dz_phi = new array_t(specs.nx, specs.ny, specs.nz,
+    d_phi = new array_t(specs.nx, specs.ny, specs.nz,
       specs.lx, specs.ly, specs.lz);
     phi = new array_t(specs.nx, specs.ny, specs.nz,
       specs.lx, specs.ly, specs.lz);
@@ -607,10 +770,8 @@ public:
     delete vz;
 
     delete rho;
-    delete dx_phi;
-    delete dy_phi;
-    delete dz_phi;
     delete phi;
+    delete d_phi;
     delete fourierX;
   }
 
@@ -635,24 +796,6 @@ public:
     }
     gzclose(fi);
     _timer["writeDensity"].stop();
-  }
-
-  void writedphis(std::string filename)
-  {
-    _timer["writedphis"].start();
-    filename = filename + ".gz";
-    gzFile fi = gzopen(filename.c_str(), "wb");
-
-    idx_t points = specs.nx*specs.ny*specs.nz;
-    for(idx_t p=0; p<points; ++p)
-    {
-      std::string str = toStr((*dx_phi)[p]) + "\t"
-        + toStr((*dy_phi)[p]) + "\t"
-        + toStr((*dz_phi)[p]) + "\t";
-      gzwrite(fi, str.c_str(), str.length());
-    }
-    gzclose(fi);
-    _timer["writedphis"].stop();
   }
 
   void writePositions(std::string filename)
@@ -703,11 +846,11 @@ public:
     }
     gzclose(fi);
 
-    filename = filename_base + "_dx_phi.strip.gz";
+    filename = filename_base + "_d_phi.strip.gz";
     fi = gzopen(filename.c_str(), "ab");
     for(idx_t p=0; p<specs.nx; ++p)
     {
-      std::string str = toStr((*dx_phi)(p,1,1)) + "\t";
+      std::string str = toStr((*d_phi)(p,1,1)) + "\t";
       gzwrite(fi, str.c_str(), str.length());
     }
     gzclose(fi);
@@ -805,11 +948,11 @@ public:
             + std::pow((*vy)(i,j,k),2) 
             + std::pow((*vz)(i,j,k),2);
 
-          real_t x = ( _S1IDXtoX0(i) + (*Dx)(i, j, k) ) / rho->dx;
-          real_t y = ( _S2IDXtoY0(j) + (*Dy)(i, j, k) ) / rho->dy;
-          real_t z = ( _S3IDXtoZ0(k) + (*Dz)(i, j, k) ) / rho->dz;
+          real_t x_idx = ( _S1IDXtoX0(i) + (*Dx)(i, j, k) ) / rho->dx;
+          real_t y_idx = ( _S2IDXtoY0(j) + (*Dy)(i, j, k) ) / rho->dy;
+          real_t z_idx = ( _S3IDXtoZ0(k) + (*Dz)(i, j, k) ) / rho->dz;
 
-          real_t potential = phi->getTriCubicInterpolatedValue(x,y,z);
+          real_t potential = phi->getTriCubicInterpolatedValue(x_idx, y_idx, z_idx);
 
           tot_E += m/2.0*(v2 + potential);
         }

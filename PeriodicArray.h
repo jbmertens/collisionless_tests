@@ -48,7 +48,10 @@ private:
 
   IT _IT_mod(IT n, IT d) const
   {
-    // todo: check and see if adding conditional here is faster
+    // TODO: check and see if having conditional here is faster
+    if ( n >= 0 && n < d )
+      return n;
+
     IT mod = n % d;
     if(mod < 0)
       mod += d;
@@ -263,17 +266,113 @@ public:
 
   RT xDer(RT i_in, RT j_in, RT k_in)
   {
-    return ( _array[idx(i_in + 1, j_in, k_in)] - _array[idx(i_in - 1, j_in, k_in)] ) / 2.0 / _dx;
+    return (
+      + 1.0/12.0*_array[idx(i_in - 2, j_in, k_in)]
+      - 2.0/3.0*_array[idx(i_in - 1, j_in, k_in)]
+      + 2.0/3.0*_array[idx(i_in + 1, j_in, k_in)]
+      - 1.0/12.0*_array[idx(i_in + 2, j_in, k_in)]
+    ) / _dx;
   }
 
   RT yDer(RT i_in, RT j_in, RT k_in)
   {
-    return ( _array[idx(i_in, j_in + 1, k_in)] - _array[idx(i_in, j_in - 1, k_in)] ) / 2.0 / _dy;
+    return (
+      + 1.0/12.0*_array[idx(i_in, j_in - 2, k_in)]
+      - 2.0/3.0*_array[idx(i_in, j_in - 1, k_in)]
+      + 2.0/3.0*_array[idx(i_in, j_in + 1, k_in)]
+      - 1.0/12.0*_array[idx(i_in, j_in + 2, k_in)]
+    ) / _dy;
   }
 
   RT zDer(RT i_in, RT j_in, RT k_in)
   {
-    return ( _array[idx(i_in, j_in, k_in + 1)] - _array[idx(i_in, j_in, k_in - 1)] ) / 2.0 / _dz;
+    return (
+     + 1.0/12.0*_array[idx(i_in, j_in, k_in - 2)]
+     - 2.0/3.0*_array[idx(i_in, j_in, k_in - 1)]
+     + 2.0/3.0*_array[idx(i_in, j_in, k_in + 1)]
+     - 1.0/12.0*_array[idx(i_in, j_in, k_in + 2)]
+    ) / _dz;
+  }
+
+  RT xxDer(RT i_in, RT j_in, RT k_in)
+  {
+    return (
+      - 1.0/12.0*_array[idx(i_in + 2, j_in, k_in)]
+      + 4.0/3.0*_array[idx(i_in + 1, j_in, k_in)]
+      - 5.0/2.0*_array[idx(i_in + 0, j_in, k_in)]
+      + 4.0/3.0*_array[idx(i_in - 1, j_in, k_in)]
+      - 1.0/12.0*_array[idx(i_in - 2, j_in, k_in)]
+    ) / _dx / _dx;
+  }
+
+  RT yyDer(RT i_in, RT j_in, RT k_in)
+  {
+    return (
+      - 1.0/12.0*_array[idx(i_in, j_in + 2, k_in)]
+      + 4.0/3.0*_array[idx(i_in, j_in + 1, k_in)]
+      - 5.0/2.0*_array[idx(i_in, j_in + 0, k_in)]
+      + 4.0/3.0*_array[idx(i_in, j_in - 1, k_in)]
+      - 1.0/12.0*_array[idx(i_in, j_in - 2, k_in)]
+    ) / _dy / _dy;
+  }
+
+  RT zzDer(RT i_in, RT j_in, RT k_in)
+  {
+    return (
+      - 1.0/12.0*_array[idx(i_in, j_in, k_in + 2)]
+      + 4.0/3.0*_array[idx(i_in, j_in, k_in + 1)]
+      - 5.0/2.0*_array[idx(i_in, j_in, k_in + 0)]
+      + 4.0/3.0*_array[idx(i_in, j_in, k_in - 1)]
+      - 1.0/12.0*_array[idx(i_in, j_in, k_in - 2)]
+    ) / _dz / _dz;
+  }
+
+  RT xyDer(RT i_in, RT j_in, RT k_in)
+  {
+    return (
+      _array[idx(i_in + 1, j_in + 1, k_in)]
+      + _array[idx(i_in - 1, j_in - 1, k_in)]
+      - _array[idx(i_in - 1, j_in + 1, k_in)]
+      - _array[idx(i_in + 1, j_in - 1, k_in)]
+      - 1.0/16.0*(
+        _array[idx(i_in + 2, j_in + 2, k_in)]
+        + _array[idx(i_in - 2, j_in - 2, k_in)]
+        - _array[idx(i_in - 2, j_in + 2, k_in)]
+        - _array[idx(i_in + 2, j_in - 2, k_in)]
+      )
+    ) / 3.0 / _dx / _dy;
+  }
+
+  RT xzDer(RT i_in, RT j_in, RT k_in)
+  {
+    return (
+      _array[idx(i_in + 1, j_in, k_in + 1)]
+      + _array[idx(i_in - 1, j_in, k_in - 1)]
+      - _array[idx(i_in - 1, j_in, k_in + 1)]
+      - _array[idx(i_in + 1, j_in, k_in - 1)]
+      - 1.0/16.0*(
+        _array[idx(i_in + 2, j_in, k_in + 2)]
+        + _array[idx(i_in - 2, j_in, k_in - 2)]
+        - _array[idx(i_in - 2, j_in, k_in + 2)]
+        - _array[idx(i_in + 2, j_in, k_in - 2)]
+      )
+    ) / 3.0 / _dx / _dz;
+  }
+
+  RT yzDer(RT i_in, RT j_in, RT k_in)
+  {
+    return (
+      _array[idx(i_in, j_in + 1, k_in + 1)]
+      + _array[idx(i_in, j_in - 1, k_in - 1)]
+      - _array[idx(i_in, j_in - 1, k_in + 1)]
+      - _array[idx(i_in, j_in + 1, k_in - 1)]
+      - 1.0/16.0*(
+        _array[idx(i_in, j_in + 2, k_in + 2)]
+        + _array[idx(i_in, j_in - 2, k_in - 2)]
+        - _array[idx(i_in, j_in - 2, k_in + 2)]
+        - _array[idx(i_in, j_in + 2, k_in - 2)]
+      )
+    ) / 3.0 / _dy / _dz;
   }
 
 };

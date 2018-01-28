@@ -11,10 +11,5 @@ TODO:
 
  - Figure out units
  - Work on lightcone / raytracing aspect
- - Random power spectrum realization
-   - Using 2LPT for ICs? https://arxiv.org/pdf/0910.0258.pdf
-   - Dx_i = D_1 (d_i phi) + ...
-   - v_i = -D_1 f_1 H (d_i phi)
-   - ... For some phi.
- - Window function correction, TSC, etc?
+ - Window function correction, add'l deposition schemes, etc?
  - Parallelize

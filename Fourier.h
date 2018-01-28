@@ -4,6 +4,9 @@
 #include <fftw3.h>
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <random>
+
+#define ROUND_2_IT(f) ((IT)(f >= 0.0 ? (f + 0.5) : (f - 0.5)))
 
 template<typename IT, typename RT>
 class Fourier
@@ -218,6 +221,71 @@ public:
       }
     }
 
+    fftw_execute_dft_c2r(p_c2r, f_field, field);
+  }
+
+  /**
+   * @brief Gaussian random field ICs
+   */
+  void gaussianRandomRealization(RT * field)
+  {
+    IT i, j, k;
+    RT px, py, pz, pmag;
+    RT scale;
+
+    // initialize rng
+    std::random_device rd;
+    const RT seed = 9;
+    std::mt19937 gen(seed);
+    std::normal_distribution<RT> gaussian_distribution;
+    std::uniform_real_distribution<double> angular_distribution(0.0, 2.0*M_PI);
+    // calling these here before looping suppresses a warning
+    gaussian_distribution(gen);
+    angular_distribution(gen);
+
+    // scale amplitudes in fourier space
+    // Unlikely to run at >512^3 anytime soon;
+    // loop over all momenta out to that resolution.
+    // (Modes won't be consistent for a larger grid.)
+    // TODO: any way to loop over modes "in order"?
+    IT NMAX = 512;
+    for(i=0; i<NMAX; i++)
+    {
+      px = (RT) (i<=NMAX/2 ? i : i-NMAX);
+      for(j=0; j<NMAX; j++)
+      {
+        py = (RT) (j<=NMAX/2 ? j : j-NMAX);
+        for(k=0; k<NMAX/2+1; k++)
+        {
+          pz = (RT) k;
+
+          // generate the same random modes for all resolutions (up to NMAX)
+          RT rand_mag = gaussian_distribution(gen);
+          RT rand_phase = angular_distribution(gen);
+
+          if( i < nx && j < ny && k < nz/2+1 )
+          {
+            IT fft_index = _FFT_IDX(i, j, k);
+
+            pmag = std::sqrt( (px/lx)*(px/lx) + (py/ly)*(py/ly)
+              + (pz/lz)*(pz/lz) )*2.0*M_PI;
+
+            // Scale by power spectrum
+            scale = 0.01/std::sqrt(pmag);
+
+            f_field[fft_index][0] = scale*rand_mag*std::cos(rand_phase);
+            f_field[fft_index][1] = scale*rand_mag*std::sin(rand_phase);
+          }
+        }
+      }
+    }
+
+    // No zero-mode
+    f_field[_FFT_IDX(0,0,0)][0] = 0;
+    f_field[_FFT_IDX(0,0,0)][1] = 0;
+
+    // FFT back; 'field' array should now be populated
+    // with a gaussian random field
     fftw_execute_dft_c2r(p_c2r, f_field, field);
   }
 
