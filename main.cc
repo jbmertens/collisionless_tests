@@ -187,9 +187,9 @@ int main(int argc, char **argv)
   specs.deposit = SheetSimulation::depositScheme::PCS;
   specs.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_dx;
 
-  // runOverdensityTests(specs);
+  runOverdensityTests(specs);
   // runUniformTests(specs);
-  runGaussianField(specs);
+  // runGaussianField(specs);
 
   return 0;
 }

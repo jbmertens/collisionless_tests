@@ -294,47 +294,57 @@ public:
     real_t weight = 1.0 / (real_t) num_carriers
      / rho->dx/rho->dy/rho->dz / specs.ns1/specs.ns2/specs.ns3;
 
+
     // distribute mass from all carriers
-    idx_t i, j, k;
-    for(i=0; i<num_x_carriers; ++i)
-      for(j=0; j<num_y_carriers; ++j)
-        for(k=0; k<num_z_carriers; ++k)
-        {
-          real_t carrier_s1 = 0, carrier_s2 = 0, carrier_s3 = 0;
-          real_t carrier_x_idx, carrier_y_idx, carrier_z_idx;
-          
-          if(i==0 && j==0 && k==0)
-          {
-            carrier_x_idx = ( _S1IDXtoX0(s1) + (*Dx)(s1, s2, s3) ) / rho->dx;
-            carrier_y_idx = ( _S2IDXtoY0(s2) + (*Dy)(s1, s2, s3) ) / rho->dy;
-            carrier_z_idx = ( _S3IDXtoZ0(s3) + (*Dz)(s1, s2, s3) ) / rho->dz;
-          }
-          else
-          {
-            carrier_s1 = (real_t) s1 + (real_t) i / (real_t) num_x_carriers;
-            carrier_s2 = (real_t) s2 + (real_t) j / (real_t) num_y_carriers;
-            carrier_s3 = (real_t) s3 + (real_t) k / (real_t) num_z_carriers;
+    if(num_x_carriers == 1 && num_y_carriers == 1 && num_z_carriers == 1)
+    {
+      // special case if only one carrier
+      real_t carrier_x_idx = ( _S1IDXtoX0(s1) + (*Dx)(s1, s2, s3) ) / rho->dx;
+      real_t carrier_y_idx = ( _S2IDXtoY0(s2) + (*Dy)(s1, s2, s3) ) / rho->dy;
+      real_t carrier_z_idx = ( _S3IDXtoZ0(s3) + (*Dz)(s1, s2, s3) ) / rho->dz;
+      _MassDeposit(weight, carrier_x_idx, carrier_y_idx, carrier_z_idx, false);
+    }
+    else
+    {
+      idx_t i, j, k;
 
-            carrier_x_idx = ( _S1IDXtoX0(carrier_s1)
-              + Dx->getTriCubicInterpolatedValue(carrier_s1, carrier_s2, carrier_s3) ) / rho->dx;
-            carrier_y_idx = ( _S2IDXtoY0(carrier_s2)
-              + Dy->getTriCubicInterpolatedValue(carrier_s1, carrier_s2, carrier_s3) ) / rho->dy;
-            carrier_z_idx = ( _S3IDXtoZ0(carrier_s3)
-              + Dz->getTriCubicInterpolatedValue(carrier_s1, carrier_s2, carrier_s3) ) / rho->dz;
+      real_t f_Dx[64], f_Dy[64], f_Dz[64];
+      for(i=0; i<4; ++i)
+        for(j=0; j<4; ++j)
+          for(k=0; k<4; ++k)
+          {
+            f_Dx[i*16 + j*4 + k] = (*Dx)(s1-1+i, s2-1+j, s3-1+k);
+            f_Dy[i*16 + j*4 + k] = (*Dy)(s1-1+i, s2-1+j, s3-1+k);
+            f_Dz[i*16 + j*4 + k] = (*Dz)(s1-1+i, s2-1+j, s3-1+k);
           }
 
-          bool announce = false;
-          if(verbosity == debug && /*s1==s1_dbg &&*/ s2==s2_dbg && s3==s3_dbg)
-          {
-            std::cout << "  depositing carrier from (" << carrier_s1 << ","
-              << carrier_s2 << "," << carrier_s3
-              << ") at (" << carrier_x_idx << ","
-              << carrier_y_idx << "," << carrier_z_idx << ")." << std::endl;
-            announce = true;
-          }
+      real_t a_Dx[64], a_Dy[64], a_Dz[64];
+      compute_tricubic_coeffs(a_Dx, f_Dx);
+      compute_tricubic_coeffs(a_Dy, f_Dy);
+      compute_tricubic_coeffs(a_Dz, f_Dz);
 
-          _MassDeposit(weight, carrier_x_idx, carrier_y_idx, carrier_z_idx, announce);
-        }
+      for(i=0; i<num_x_carriers; ++i)
+        for(j=0; j<num_y_carriers; ++j)
+          for(k=0; k<num_z_carriers; ++k)
+          { 
+            real_t carrier_s1d = (real_t) i / (real_t) num_x_carriers;
+            real_t carrier_s2d = (real_t) i / (real_t) num_y_carriers;
+            real_t carrier_s3d = (real_t) i / (real_t) num_z_carriers;
+
+            real_t carrier_s1 = s1 + carrier_s1d;
+            real_t carrier_s2 = s2 + carrier_s2d;
+            real_t carrier_s3 = s3 + carrier_s3d;
+
+            real_t carrier_x_idx = ( _S1IDXtoX0(carrier_s1)
+              + evaluate_interpolation(a_Dx, carrier_s1d, carrier_s2d, carrier_s3d) ) / rho->dx;
+            real_t carrier_y_idx = ( _S2IDXtoY0(carrier_s2)
+              + evaluate_interpolation(a_Dy, carrier_s1d, carrier_s2d, carrier_s3d) ) / rho->dy;
+            real_t carrier_z_idx = ( _S3IDXtoZ0(carrier_s3)
+              + evaluate_interpolation(a_Dz, carrier_s1d, carrier_s2d, carrier_s3d) ) / rho->dz;
+
+            _MassDeposit(weight, carrier_x_idx, carrier_y_idx, carrier_z_idx, false);
+          }
+    }
 
     _timer["_pushSheetMassToRho"].stop();
   }

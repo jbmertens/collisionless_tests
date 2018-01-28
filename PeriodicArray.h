@@ -3,6 +3,7 @@
 
 #include <limits>
 #include <stdexcept>
+#include "TriCubicInterpolator.h"
 
 template<typename IT, typename RT>
 class PeriodicArray
@@ -220,6 +221,37 @@ public:
     return c0*(1-kd) + c1*kd;
   }
 
+  RT getTriCubicInterpolatedValue(RT i_in, RT j_in, RT k_in)
+  {
+    // TODO: consider higher order interpolation methods
+    return getCINTTriCubicInterpolatedValue(i_in, j_in, k_in);
+    return getLMTriCubicInterpolatedValue(i_in, j_in, k_in);
+  }
+
+  // Lekien-Marsden cubic spline
+  RT getLMTriCubicInterpolatedValue(RT i_in, RT j_in, RT k_in)
+  {
+    IT il = i_in < 0 ? (IT) i_in - 1 : (IT) i_in; // Index "left" of i
+    RT id = i_in - il; // fractional difference
+    IT jl = j_in < 0 ? (IT) j_in - 1 : (IT) j_in; // same as ^ but j
+    RT jd = j_in - jl;
+    IT kl = k_in < 0 ? (IT) k_in - 1 : (IT) k_in; // same as ^ but k
+    RT kd = k_in - kl;
+
+    RT a[64];
+    RT f[64];
+
+    for(IT i=0; i<4; ++i)
+      for(IT j=0; j<4; ++j)
+        for(IT k=0; k<4; ++k)
+        {
+          f[i*16 + j*4 + k] = _array[idx(il+i-1, jl+j-1, kl-1)];
+        }
+
+    compute_tricubic_coeffs(a, f);
+    return evaluate_interpolation(a, id, jd, kd);
+  }
+
   // Catmull-Rom cubic spline
   RT CINT(RT u, RT p0, RT p1, RT p2, RT p3)
   {
@@ -231,10 +263,9 @@ public:
       );
   }
 
-  RT getTriCubicInterpolatedValue(RT i_in, RT j_in, RT k_in)
+  RT getCINTTriCubicInterpolatedValue(RT i_in, RT j_in, RT k_in)
   {
-    // TODO: need higher order interpolation methods
-    // For now, weighted average (linear interpolation)
+    // TODO: consider higher order interpolation methods
     IT il = i_in < 0 ? (IT) i_in - 1 : (IT) i_in; // Index "left" of i
     RT id = i_in - il; // fractional difference
     IT jl = j_in < 0 ? (IT) j_in - 1 : (IT) j_in; // same as ^ but j
