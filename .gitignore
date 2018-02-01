@@ -39,3 +39,4 @@ sim_*/*
 
 # Executables
 collisionless_tests
+run_tests
