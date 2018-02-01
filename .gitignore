@@ -33,3 +33,9 @@ sim_*/*
 *.exe
 *.out
 *.app
+
+# Vim swap files
+*.swp
+
+# Executables
+collisionless_tests
