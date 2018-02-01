@@ -20,6 +20,7 @@
 #ifndef SHEET
 #define SHEET
 
+#include "mutex_pool.h"
 #include "RK4Register.h"
 #include "PeriodicArray.h"
 #include "Fourier.h"
@@ -111,6 +112,8 @@ public:
     delete phi;
     delete d_phi;
     delete fourierX;
+
+    mutex_free(pool);
   }
 
   /**
@@ -306,6 +309,8 @@ private:
 
   fourier_t * fourierX; ///< FFT in metric space
 
+  mutex_pool * pool;
+
   /**
    * Functions to convert s-indices to non-displaced coordinates
    */
@@ -401,6 +406,8 @@ private:
 
     real_t pcs;
     for(idx_t i=-1; i<=2; ++i)
+    {
+      mutex_set_lock(pool, ix+i);
       for(idx_t j=-1; j<=2; ++j)
         for(idx_t k=-1; k<=2; ++k)
         {
@@ -411,16 +418,16 @@ private:
           if(s<1.0)
           {
             pcs = (4.0 - 6.0*s*s + 3.0*s*s*s)/6.0;
-#pragma omp atomic
             (*rho)(ix+i, iy+j, iz+k) += pcs*weight/norm;
           }
           else if(s<2.0 && s>=1.0)
           {
             pcs = std::pow(2.0 - s, 3)/6.0;
-#pragma omp atomic
             (*rho)(ix+i, iy+j, iz+k) += pcs*weight/norm;
           }
         }
+      mutex_unset_lock(pool, ix+i);
+    }
   }
 
   /**
@@ -953,6 +960,8 @@ private:
       specs.lx, specs.ly, specs.lz, &(*rho)[0]);
 
     _initializeFields();
+
+    pool = mutex_alloc_custom(specs.nx, SPLATT_DEFAULT_LOCK_PAD);
   }
 
   std::string _toStr(real_t val)

@@ -161,33 +161,40 @@ void runGaussianField()
   // specs.carriers_per_dz = 2;
   // runSim(specs, "sim_GRF_nx32_ns16", 10, true);
 
-  specs.nx = 8; specs.ny = 8; specs.nz = 8;
-  specs.ns1 = 8; specs.ns2 = 8; specs.ns3 = 8;
-  specs.carriers_per_dx = 0;
-  specs.carriers_per_dy = 0;
-  specs.carriers_per_dz = 0;
-  runSim(specs, "sim_GRF_nx08_ns08", 500, true);
+  // specs.nx = 8; specs.ny = 8; specs.nz = 8;
+  // specs.ns1 = 8; specs.ns2 = 8; specs.ns3 = 8;
+  // specs.carriers_per_dx = 0;
+  // specs.carriers_per_dy = 0;
+  // specs.carriers_per_dz = 0;
+  // runSim(specs, "sim_GRF_nx08_ns08", 500, true);
 
-  specs.nx = 16; specs.ny = 16; specs.nz = 16;
-  specs.ns1 = 16; specs.ns2 = 16; specs.ns3 = 16;
-  specs.carriers_per_dx = 0;
-  specs.carriers_per_dy = 0;
-  specs.carriers_per_dz = 0;
-  runSim(specs, "sim_GRF_nx16_ns16", 500, true);
+  // specs.nx = 16; specs.ny = 16; specs.nz = 16;
+  // specs.ns1 = 16; specs.ns2 = 16; specs.ns3 = 16;
+  // specs.carriers_per_dx = 0;
+  // specs.carriers_per_dy = 0;
+  // specs.carriers_per_dz = 0;
+  // runSim(specs, "sim_GRF_nx16_ns16", 500, true);
 
-  specs.nx = 32; specs.ny = 32; specs.nz = 32;
-  specs.ns1 = 32; specs.ns2 = 32; specs.ns3 = 32;
-  specs.carriers_per_dx = 0;
-  specs.carriers_per_dy = 0;
-  specs.carriers_per_dz = 0;
-  runSim(specs, "sim_GRF_nx32_ns32", 500, true);
+  // specs.nx = 32; specs.ny = 32; specs.nz = 32;
+  // specs.ns1 = 32; specs.ns2 = 32; specs.ns3 = 32;
+  // specs.carriers_per_dx = 0;
+  // specs.carriers_per_dy = 0;
+  // specs.carriers_per_dz = 0;
+  // runSim(specs, "sim_GRF_nx32_ns32", 500, true);
 
-  specs.nx = 64; specs.ny = 64; specs.nz = 64;
+  // specs.nx = 64; specs.ny = 64; specs.nz = 64;
+  // specs.ns1 = 64; specs.ns2 = 64; specs.ns3 = 64;
+  // specs.carriers_per_dx = 0;
+  // specs.carriers_per_dy = 0;
+  // specs.carriers_per_dz = 0;
+  // runSim(specs, "sim_GRF_nx64_ns64", 500, true);
+
+  specs.nx = 128; specs.ny = 128; specs.nz = 128;
   specs.ns1 = 64; specs.ns2 = 64; specs.ns3 = 64;
-  specs.carriers_per_dx = 0;
-  specs.carriers_per_dy = 0;
-  specs.carriers_per_dz = 0;
-  runSim(specs, "sim_GRF_nx64_ns64", 500, true);
+  specs.carriers_per_dx = 2;
+  specs.carriers_per_dy = 2;
+  specs.carriers_per_dz = 2;
+  runSim(specs, "sim_GRF_nx512_ns256_cpdx2", 500, true);
 }
 
 
@@ -206,9 +213,9 @@ int main(int argc, char **argv)
   specs.deposit = SheetSimulation::depositScheme::PCS;
   specs.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_dx;
 
-  runOverdensityTests(specs);
+  // runOverdensityTests(specs);
   // runUniformTests(specs);
-  // runGaussianField();
+  runGaussianField();
 
   return 0;
 }
