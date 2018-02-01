@@ -407,7 +407,8 @@ private:
     real_t pcs;
     for(idx_t i=-1; i<=2; ++i)
     {
-      mutex_set_lock(pool, ix+i);
+      idx_t mutex_idx = IT_mod<idx_t>(ix+i, specs.nx);
+      mutex_set_lock(pool, mutex_idx);
       for(idx_t j=-1; j<=2; ++j)
         for(idx_t k=-1; k<=2; ++k)
         {
@@ -426,7 +427,7 @@ private:
             (*rho)(ix+i, iy+j, iz+k) += pcs*weight/norm;
           }
         }
-      mutex_unset_lock(pool, ix+i);
+      mutex_unset_lock(pool, mutex_idx);
     }
   }
 

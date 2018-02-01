@@ -189,8 +189,8 @@ void runGaussianField()
   // specs.carriers_per_dz = 0;
   // runSim(specs, "sim_GRF_nx64_ns64", 500, true);
 
-  specs.nx = 128; specs.ny = 128; specs.nz = 128;
-  specs.ns1 = 64; specs.ns2 = 64; specs.ns3 = 64;
+  specs.nx = 8; specs.ny = 8; specs.nz = 8;
+  specs.ns1 = 4; specs.ns2 = 4; specs.ns3 = 4;
   specs.carriers_per_dx = 2;
   specs.carriers_per_dy = 2;
   specs.carriers_per_dz = 2;

@@ -12,6 +12,19 @@
   _Pragma("omp parallel for") \
   ARRAY_LOOP(i, pts)
 
+template<typename IT>
+inline IT IT_mod(IT n, IT d)
+{
+  if ( n >= 0 && n < d )
+    return n;
+
+  IT mod = n % d;
+  if(mod < 0)
+    mod += d;
+
+  return mod;
+}
+
 template<typename IT, typename RT>
 class PeriodicArray
 {
@@ -51,18 +64,6 @@ private:
     }
   }
 
-  IT _IT_mod(IT n, IT d) const
-  {
-    if ( n >= 0 && n < d )
-      return n;
-
-    IT mod = n % d;
-    if(mod < 0)
-      mod += d;
-
-    return mod;
-  }
-
 public:
 
   const IT &nx, &ny, &nz;
@@ -100,9 +101,9 @@ public:
 
   IT idx(IT i_in, IT j_in, IT k_in) const
   {
-    IT i = _IT_mod(i_in, _nx),
-       j = _IT_mod(j_in, _ny),
-       k = _IT_mod(k_in, _nz);
+    IT i = IT_mod<IT>(i_in, _nx),
+       j = IT_mod<IT>(j_in, _ny),
+       k = IT_mod<IT>(k_in, _nz);
     return i*_ny*_nz + j*_nz + k;
   }
 

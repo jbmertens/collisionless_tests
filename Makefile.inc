@@ -16,6 +16,7 @@ OPTFLAGS += -march=native
 # Warnings, etc.
 CXXFLAGS += -Wall
 CXXFLAGS += -fopenmp
+CXXFLAGS += -g
 
 CXXFLAGS += $(OPTFLAGS)
 
