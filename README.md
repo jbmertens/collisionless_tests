@@ -11,6 +11,12 @@ make
 And the executable `collisionless_tests` will be created. If you wish to edit
 the build configuration, the file `Makefile.inc` should be used.
 
+Tests can be built with:
+```
+make tests
+```
+And the executable `run_tests` will be created.
+
 
 ## TODO
 

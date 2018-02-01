@@ -11,9 +11,13 @@ LDLIBS += -lz
 LDLIBS += -lm
 
 EXE = collisionless_tests
+TEST_EXE = run_tests
 
 all: main.cc *.h
 	$(CXX) main.cc -o $(EXE) $(CXXFLAGS) $(LDFLAGS) $(LDLIBS)
 
+tests: tests.cc *.h
+	$(CXX) tests.cc -o $(TEST_EXE) $(CXXFLAGS) $(LDFLAGS) $(LDLIBS)
+
 clean:
-	rm -f $(EXE)
+	rm -f $(EXE) $(TEST_EXE)
