@@ -2,12 +2,23 @@
 
 Code here is a not-quite-complete implementation of the sheet method.
 
-For now, compile by doing something like:
-```
-g++ main.cc -std=c++11 -lfftw3_omp -lfftw3 -lm -flto -O3 -Wall -lz -ffast-math -march=native -fopenmp
-```
 
-TODO:
+## Building
+A `Makefile` is provided to compile. Most users can compile simply via:
+```
+make
+```
+And the executable `collisionless_tests` will be created. If you wish to edit
+the build configuration, the file `Makefile.inc` should be used.
+
+Tests can be built with:
+```
+make tests
+```
+And the executable `run_tests` will be created.
+
+
+## TODO
 
  - Figure out units
  - Work on lightcone / raytracing aspect
