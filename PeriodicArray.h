@@ -59,6 +59,7 @@ private:
     IT mod = n % d;
     if(mod < 0)
       mod += d;
+
     return mod;
   }
 
@@ -193,6 +194,18 @@ public:
     }
 
     return max_res;
+  }
+
+  void roll()
+  {
+    for(IT k=0; k<_nz; ++k)
+      for(IT j=0; j<_ny; ++j)
+      {
+        RT buffer_val = _array[idx(0, j, k)];
+        for(IT i=0; i<_nx-1; ++i)
+          _array[idx(i, j, k)] = _array[idx(i+1, j, k)];
+        _array[idx(_nx-1, j, k)] = buffer_val;
+      }
   }
 
   // Weighted averaging / trilinear interpolation via

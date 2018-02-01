@@ -55,22 +55,16 @@ class SheetSimulation
 {
 public:
 
-  // internal types
   typedef long long idx_t;
   typedef double real_t;
-  typedef RK4Register<idx_t, real_t> RK4_t;
-  typedef PeriodicArray<idx_t, real_t> array_t;
-  typedef Fourier<idx_t, real_t> fourier_t;
-
-  TimerManager _timer;
-  idx_t step;
 
   enum Verbosity { none, minimal, verbose, debug };
   Verbosity verbosity;
 
   enum depositScheme { CIC, PCS };
   enum carrierCountScheme { per_dx, per_ds };
-  enum initializationType { uniform1d, uniform1dv, overdensity1d, gaussian_random };
+  enum initializationType { uniform1d, uniform1dv,
+    overdensity2d, overdensity1d, gaussian_random };
 
   // Simulation information
   struct Specs
@@ -90,6 +84,214 @@ public:
     initializationType initialization_type;
   };
 
+  SheetSimulation(const Specs specs_in)
+  {
+    verbosity = none;
+    step = 0;
+    _initialize(specs_in);
+  }
+
+  SheetSimulation(const Specs specs_in, Verbosity verbosity_in)
+  {
+    verbosity = verbosity_in;
+    _initialize(specs_in);
+  }
+
+  ~SheetSimulation()
+  {
+    delete Dx;
+    delete Dy;
+    delete Dz;
+
+    delete vx;
+    delete vy;
+    delete vz;
+
+    delete rho;
+    delete phi;
+    delete d_phi;
+    delete fourierX;
+  }
+
+  /**
+   * @brief      Wrapper to print TimerManager information
+   */
+  void printTimingInformation()
+  {
+    std::cout << _timer;
+  }
+
+  /**
+   * @brief      Take an RK4 step.
+   */
+  void RKStep()
+  {
+    if(verbosity == debug) std::cout << "Initializing RK step." << std::endl << std::flush;
+    _stepInit();
+    
+    if(verbosity == debug) std::cout << "Performing K1 step." << std::endl << std::flush;
+    _RK4Calc();
+    if(verbosity == debug) std::cout << "  Finalizing." << std::endl << std::flush;
+    _K1Finalize();
+
+    if(verbosity == debug) std::cout << "Performing K2 step." << std::endl << std::flush;
+    _RK4Calc();
+    if(verbosity == debug) std::cout << "  Finalizing." << std::endl << std::flush;
+    _K2Finalize();
+
+    if(verbosity == debug) std::cout << "Performing K3 step." << std::endl << std::flush;
+    _RK4Calc();
+    if(verbosity == debug) std::cout << "  Finalizing." << std::endl << std::flush;
+    _K3Finalize();
+
+    if(verbosity == debug) std::cout << "Performing K4 step." << std::endl << std::flush;
+    _RK4Calc();
+    if(verbosity == debug) std::cout << "  Finalizing." << std::endl << std::flush;
+    _K4Finalize();
+
+    step++;
+  }
+
+  void writeDensity(std::string filename)
+  {
+    _timer["writeDensity"].start();
+    filename = filename + ".gz";
+    gzFile fi = gzopen(filename.c_str(), "wb");
+
+    idx_t points = specs.nx*specs.ny*specs.nz;
+    for(idx_t p=0; p<points; ++p)
+    {
+      std::string str = _toStr((*rho)[p]) + "\t";
+      gzwrite(fi, str.c_str(), str.length());
+    }
+    gzclose(fi);
+    _timer["writeDensity"].stop();
+  }
+
+  void writePositions(std::string filename)
+  {
+    _timer["writePositions"].start();
+    filename = filename + ".gz";
+    gzFile fi = gzopen(filename.c_str(), "wb");
+
+    idx_t points = specs.ns1*specs.ns2*specs.ns3;
+    for(idx_t p=0; p<points; ++p)
+    {
+      std::string str = _toStr((*Dx)[p]) + "\t"
+        + _toStr((*Dy)[p]) + "\t"
+        + _toStr((*Dz)[p]) + "\t";
+      gzwrite(fi, str.c_str(), str.length());
+    }
+    gzclose(fi);
+    _timer["writePositions"].stop();
+  }
+
+  void writeStrips(std::string filename_base)
+  {
+    _timer["writeStrips"].start();
+    std::string filename = filename_base + "_density.strip.gz";
+    gzFile fi = gzopen(filename.c_str(), "ab");
+    for(idx_t p=0; p<specs.nx; ++p)
+    {
+      std::string str = _toStr((*rho)(p,1,1)) + "\t";
+      gzwrite(fi, str.c_str(), str.length());
+    }
+    gzclose(fi);
+
+    filename = filename_base + "_x.strip.gz";
+    fi = gzopen(filename.c_str(), "ab");
+    for(idx_t p=0; p<specs.ns1; ++p)
+    {
+      std::string str = _toStr((*Dx)(p,1,1) + _S1IDXtoX0(p)) + "\t";
+      gzwrite(fi, str.c_str(), str.length());
+    }
+    gzclose(fi);
+
+    filename = filename_base + "_vx.strip.gz";
+    fi = gzopen(filename.c_str(), "ab");
+    for(idx_t p=0; p<specs.ns1; ++p)
+    {
+      std::string str = _toStr((*vx)(p,1,1)) + "\t";
+      gzwrite(fi, str.c_str(), str.length());
+    }
+    gzclose(fi);
+
+    filename = filename_base + "_d_phi.strip.gz";
+    fi = gzopen(filename.c_str(), "ab");
+    for(idx_t p=0; p<specs.nx; ++p)
+    {
+      std::string str = _toStr((*d_phi)(p,1,1)) + "\t";
+      gzwrite(fi, str.c_str(), str.length());
+    }
+    gzclose(fi);
+
+    filename = filename_base + "_phi.strip.gz";
+    fi = gzopen(filename.c_str(), "ab");
+    for(idx_t p=0; p<specs.nx; ++p)
+    {
+      std::string str = _toStr((*phi)(p,1,1)) + "\t";
+      gzwrite(fi, str.c_str(), str.length());
+    }
+    gzclose(fi);
+    _timer["writeStrips"].stop();
+  }
+
+  void writeInfo(std::string directory)
+  {
+    std::string filename (directory + "/SheetSimulation.info");
+
+    std::ofstream ofs;
+    ofs.open(filename, std::ofstream::out | std::ofstream::trunc);
+
+    ofs << "nx = " << specs.nx << std::endl;
+    ofs << "ny = " << specs.ny << std::endl;
+    ofs << "nz = " << specs.nz << std::endl;
+    ofs << "ns1 = " << specs.ns1 << std::endl;
+    ofs << "ns2 = " << specs.ns2 << std::endl;
+    ofs << "ns3 = " << specs.ns3 << std::endl;
+    ofs << "lx = " << specs.lx << std::endl;
+    ofs << "ly = " << specs.ly << std::endl;
+    ofs << "lz = " << specs.lz << std::endl;
+    ofs << "carriers_per_dx = " << specs.carriers_per_dx << std::endl;
+    ofs << "carriers_per_dy = " << specs.carriers_per_dy << std::endl;
+    ofs << "carriers_per_dz = " << specs.carriers_per_dz << std::endl;
+    ofs << "dt = " << specs.dt << std::endl;
+
+    if(specs.deposit == CIC)
+      ofs << "deposit = CIC " << std::endl;
+    if(specs.deposit == PCS)
+      ofs << "deposit = PCS " << std::endl;
+
+    ofs.close();
+  }
+
+  void writeConstraints(std::string directory)
+  {
+    _timer["writeConstraints"].start();
+    // call these to make sure data in phi, Dx, and vx are consistent
+    _stepInit();
+    _RK4Calc();
+
+    std::string filename (directory + "/constraints.dat.gz");
+
+    gzFile fi = gzopen(filename.c_str(), "ab");
+    std::string str = _toStr(_computeTotalMomentum()) + "\t"
+                      + _toStr(_computeTotalEnergy()) + "\n";
+    gzwrite(fi, str.c_str(), str.length());
+    gzclose(fi);
+    _timer["writeConstraints"].stop();
+  }
+
+private:
+
+  // internal types
+  typedef RK4Register<idx_t, real_t> RK4_t;
+  typedef PeriodicArray<idx_t, real_t> array_t;
+  typedef Fourier<idx_t, real_t> fourier_t;
+
+  TimerManager _timer;
+  idx_t step;
+
   Specs specs = {0};
   idx_t s1_dbg = 0, s2_dbg = 0, s3_dbg = 0;
 
@@ -105,14 +307,6 @@ public:
   fourier_t * fourierX; ///< FFT in metric space
 
   /**
-   * Wrapper to print TimerManager information
-   */
-  void printTimingInformation()
-  {
-    std::cout << _timer;
-  }
-
-  /**
    * Functions to convert s-indices to non-displaced coordinates
    */
   real_t _S1IDXtoX0(idx_t s1) { return s1*specs.lx/specs.ns1; }
@@ -123,23 +317,21 @@ public:
   real_t _S3IDXtoZ0(real_t s3) { return s3*specs.lz/specs.ns3; }
 
   // TODO: 2nd-order or higher kernels?
-  void _MassDeposit(real_t weight, real_t x_idx, real_t y_idx, real_t z_idx,
-    bool announce)
+  void _MassDeposit(real_t weight, real_t x_idx, real_t y_idx, real_t z_idx)
   {
     switch (specs.deposit)
     {
       case PCS:
-        _PCSDeposit(weight, x_idx, y_idx, z_idx, announce);
+        _PCSDeposit(weight, x_idx, y_idx, z_idx);
         break;
       case CIC:
       default:
-        _CICDeposit(weight, x_idx, y_idx, z_idx, announce);
+        _CICDeposit(weight, x_idx, y_idx, z_idx);
         break;
     }
   }
 
-  void _CICDeposit(real_t weight, real_t x_idx, real_t y_idx, real_t z_idx,
-    bool announce)
+  void _CICDeposit(real_t weight, real_t x_idx, real_t y_idx, real_t z_idx)
   {
     idx_t ix, iy, iz,
           ixp, iyp, izp;
@@ -163,33 +355,26 @@ public:
     z_f = z_idx - (real_t) iz;
     z_h = 1.0 - z_f;
 
-    if(announce)
-    {
-      std::cout << "  depositing near " << ix << "," << iy << "," << iz << "; ";
-      std::cout << "weight = " << weight << ", x_h=" << x_h << ", x_f=" << x_f << "; sum="
-      << x_h*y_h*z_h
-         +x_h*y_h*z_f
-         +x_h*y_f*z_h
-         +x_h*y_f*z_f
-         +x_f*y_h*z_h
-         +x_f*y_h*z_f
-         +x_f*y_f*z_h
-         +x_f*y_f*z_f << std::endl;
-    }
-
+#pragma omp atomic
     (*rho)(ix, iy, iz) += x_h*y_h*z_h*weight;
+#pragma omp atomic
     (*rho)(ix, iy, izp) += x_h*y_h*z_f*weight;
+#pragma omp atomic
     (*rho)(ix, iyp, iz) += x_h*y_f*z_h*weight;
+#pragma omp atomic
     (*rho)(ix, iyp, izp) += x_h*y_f*z_f*weight;
 
+#pragma omp atomic
     (*rho)(ixp, iy, iz) += x_f*y_h*z_h*weight;
+#pragma omp atomic
     (*rho)(ixp, iy, izp) += x_f*y_h*z_f*weight;
+#pragma omp atomic
     (*rho)(ixp, iyp, iz) += x_f*y_f*z_h*weight;
+#pragma omp atomic
     (*rho)(ixp, iyp, izp) += x_f*y_f*z_f*weight;
   }
 
-  void _PCSDeposit(real_t weight, real_t x_idx, real_t y_idx, real_t z_idx,
-    bool announce)
+  void _PCSDeposit(real_t weight, real_t x_idx, real_t y_idx, real_t z_idx)
   {
     idx_t ix = (x_idx < 0 ? (idx_t) x_idx - 1 : (idx_t) x_idx );
     idx_t iy = (y_idx < 0 ? (idx_t) y_idx - 1 : (idx_t) y_idx );
@@ -206,11 +391,11 @@ public:
           
           if(s<1.0)
           {
-            norm += (4.0 - 6.0*s*s + 3.0*std::pow(std::abs(s), 3))/6.0;
+            norm += (4.0 - 6.0*s*s + 3.0*s*s*s)/6.0;
           }
           else if(s<2.0 && s>=1.0)
           {
-            norm += std::pow(2.0 - std::abs(s), 3)/6.0;
+            norm += std::pow(2.0 - s, 3)/6.0;
           }
         }
 
@@ -225,12 +410,14 @@ public:
           
           if(s<1.0)
           {
-            pcs = (4.0 - 6.0*s*s + 3.0*std::pow(std::abs(s), 3))/6.0;
+            pcs = (4.0 - 6.0*s*s + 3.0*s*s*s)/6.0;
+#pragma omp atomic
             (*rho)(ix+i, iy+j, iz+k) += pcs*weight/norm;
           }
           else if(s<2.0 && s>=1.0)
           {
-            pcs = std::pow(2.0 - std::abs(s), 3)/6.0;
+            pcs = std::pow(2.0 - s, 3)/6.0;
+#pragma omp atomic
             (*rho)(ix+i, iy+j, iz+k) += pcs*weight/norm;
           }
         }
@@ -297,15 +484,9 @@ public:
     if(num_z_carriers <= 0) num_z_carriers = 1;
 
     idx_t num_carriers = num_x_carriers*num_y_carriers*num_z_carriers;
-    if(verbosity == debug && s1==s1_dbg && s2==s2_dbg && s3==s3_dbg)
-    {
-      std::cout << "  Performing projection for debug point using "
-        << num_carriers << " carriers." << std::endl;
-    }
 
     real_t weight = 1.0 / (real_t) num_carriers
      / rho->dx/rho->dy/rho->dz / specs.ns1/specs.ns2/specs.ns3;
-
 
     // distribute mass from all carriers
     if(num_x_carriers == 1 && num_y_carriers == 1 && num_z_carriers == 1)
@@ -314,7 +495,7 @@ public:
       real_t carrier_x_idx = ( _S1IDXtoX0(s1) + (*Dx)(s1, s2, s3) ) / rho->dx;
       real_t carrier_y_idx = ( _S2IDXtoY0(s2) + (*Dy)(s1, s2, s3) ) / rho->dy;
       real_t carrier_z_idx = ( _S3IDXtoZ0(s3) + (*Dz)(s1, s2, s3) ) / rho->dz;
-      _MassDeposit(weight, carrier_x_idx, carrier_y_idx, carrier_z_idx, false);
+      _MassDeposit(weight, carrier_x_idx, carrier_y_idx, carrier_z_idx);
     }
     else
     {
@@ -340,8 +521,8 @@ public:
           for(k=0; k<num_z_carriers; ++k)
           { 
             real_t carrier_s1d = (real_t) i / (real_t) num_x_carriers;
-            real_t carrier_s2d = (real_t) i / (real_t) num_y_carriers;
-            real_t carrier_s3d = (real_t) i / (real_t) num_z_carriers;
+            real_t carrier_s2d = (real_t) j / (real_t) num_y_carriers;
+            real_t carrier_s3d = (real_t) k / (real_t) num_z_carriers;
 
             real_t carrier_s1 = s1 + carrier_s1d;
             real_t carrier_s2 = s2 + carrier_s2d;
@@ -354,13 +535,13 @@ public:
             real_t carrier_z_idx = ( _S3IDXtoZ0(carrier_s3)
               + evaluate_interpolation(a_Dz, carrier_s1d, carrier_s2d, carrier_s3d) ) / rho->dz;
 
-            _MassDeposit(weight, carrier_x_idx, carrier_y_idx, carrier_z_idx, false);
+            _MassDeposit(weight, carrier_x_idx, carrier_y_idx, carrier_z_idx);
           }
     }
   }
 
   /**
-   * Set metric potentials (or really just derivatives thereof)
+   * @brief      Set metric potential phi based on rho.
    */
   void _setMetricPotential()
   {
@@ -369,10 +550,10 @@ public:
       std::cout << "  Setting Metric potentials...";
     }
 
-    // Just set \phi'(x)  ~ 1/k \rho
     // TODO: consider large-scale correction terms?
     *phi = *rho;
-    fourierX->inverseLaplacian(&(*phi)[0]); // &(*phi)[0] is pointer to phi's internal array
+    // &(*phi)[0] is pointer to phi's internal array:
+    fourierX->inverseLaplacian(&(*phi)[0], 0);
 
     if(verbosity == debug)
     {
@@ -380,23 +561,32 @@ public:
     }
   }
 
+  /**
+   * @brief      Set d_phi to a derivative of phi
+   *
+   * @param[in]  dir   direction of the derivative (1=x, 2=y, 3=z)
+   */
   void _setMetricDerivative(int dir)
   {
     idx_t i, j, k;
 
+    // *d_phi = *phi;
     switch (dir)
     {
       case 1:
+        // fourierX->periodicGradient(&(*d_phi)[0], 1);
         PARALLEL_SHEET_LOOP3(i, j, k, specs.nx, specs.ny, specs.nz)
           (*d_phi)(i, j, k) = phi->xDer(i,j,k);
         break;
 
       case 2:
+        // fourierX->periodicGradient(&(*d_phi)[0], 2);
         PARALLEL_SHEET_LOOP3(i, j, k, specs.nx, specs.ny, specs.nz)
           (*d_phi)(i, j, k) = phi->yDer(i,j,k);
         break;
       
       case 3:
+        // fourierX->periodicGradient(&(*d_phi)[0], 3);
         PARALLEL_SHEET_LOOP3(i, j, k, specs.nx, specs.ny, specs.nz)
           (*d_phi)(i, j, k) = phi->zDer(i,j,k);
         break;
@@ -408,7 +598,7 @@ public:
   }
 
   /**
-   * Intermediate RK4 calculations for phase space fields
+   * @brief      Perform calculations needed to compute K's in an RK4
    */
   void _RK4Calc()
   {
@@ -418,7 +608,7 @@ public:
     // density projection
     // clear rho
     if(verbosity == debug) std::cout << "  Performing density projection..." << std::flush;
-    _timer["_RK4Calc:pushSheetMassToRho"].start();
+    _timer["_RK4Calc:_pushSheetMassToRho"].start();
 
     idx_t p;
     PARALLEL_SHEET_LOOP(p, rho->nx*rho->ny*rho->nz)
@@ -545,34 +735,6 @@ public:
     vz->K4Finalize();
   }
 
-  void RKStep()
-  {
-    if(verbosity == debug) std::cout << "Initializing RK step." << std::endl << std::flush;
-    _stepInit();
-    
-    if(verbosity == debug) std::cout << "Performing K1 step." << std::endl << std::flush;
-    _RK4Calc();
-    if(verbosity == debug) std::cout << "  Finalizing." << std::endl << std::flush;
-    _K1Finalize();
-
-    if(verbosity == debug) std::cout << "Performing K2 step." << std::endl << std::flush;
-    _RK4Calc();
-    if(verbosity == debug) std::cout << "  Finalizing." << std::endl << std::flush;
-    _K2Finalize();
-
-    if(verbosity == debug) std::cout << "Performing K3 step." << std::endl << std::flush;
-    _RK4Calc();
-    if(verbosity == debug) std::cout << "  Finalizing." << std::endl << std::flush;
-    _K3Finalize();
-
-    if(verbosity == debug) std::cout << "Performing K4 step." << std::endl << std::flush;
-    _RK4Calc();
-    if(verbosity == debug) std::cout << "  Finalizing." << std::endl << std::flush;
-    _K4Finalize();
-
-    step++;
-  }
-
   void _initializeFields()
   {
     if(verbosity > none)
@@ -591,6 +753,10 @@ public:
 
       case gaussian_random :
         _initializeGaussianRandom();
+        break;
+
+      case overdensity2d :
+        _initialize2DOverdensity();
         break;
 
       case overdensity1d :
@@ -640,18 +806,32 @@ public:
     }
   }
 
+  void _initialize2DOverdensity()
+  {
+    // position fields should just be coordinates
+    idx_t i, j, k;
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+    {
+      real_t x_frac = ((real_t) i)/specs.ns1 - 0.5;
+      real_t y_frac = ((real_t) j)/specs.ns2 - 0.5;
+      Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 0.5*std::exp(-1.0*std::pow(x_frac/0.05, 2))*x_frac;
+      Dy->_p(i,j,k) = 1.0/specs.ny/5.0 - 0.5*std::exp(-1.0*std::pow(y_frac/0.05, 2))*y_frac;
+    }
+  }
+
   /**
    * @brief   Compute dn_phi and set v->_p and x->_p for a given n = 1, 2, 3
    * @details    Called by _initializeGaussianRandom().
    */
-  void setVDFrom2LPTPhi1(RK4_t * v, RK4_t * D, int n)
+  void _setVDFrom2LPTPhi1(RK4_t * v, RK4_t * D, int n)
   {
     idx_t i, j, k;
     _setMetricDerivative(n);
     PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
     {
-      real_t x0_idx = _S1IDXtoX0(i)/Dx->dx, y0_idx = _S2IDXtoY0(j)/Dy->dy,
-        z0_idx = _S3IDXtoZ0(k)/Dz->dz;
+      real_t x0_idx = _S1IDXtoX0(i)/rho->dx,
+        y0_idx = _S2IDXtoY0(j)/rho->dy,
+        z0_idx = _S3IDXtoZ0(k)/rho->dz;
       real_t dphi = d_phi->getTriCubicInterpolatedValue(x0_idx, y0_idx, z0_idx);
       D->_p(i,j,k) = -dphi;
       v->_p(i,j,k) = -dphi;
@@ -682,47 +862,67 @@ public:
    * @brief   Compute dn_phi and add 2LPT phi_2 contribution to v->_p and x->_p
    * @details    Called by _initializeGaussianRandom().
    */
-  void setVDFrom2LPTPhi2(RK4_t * v, RK4_t * D, int n)
+  void _setVDFrom2LPTPhi2(RK4_t * v, RK4_t * D, int n)
   {
     idx_t i, j, k;
     _setMetricDerivative(n);
     PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
     {
-      real_t x0_idx = _S1IDXtoX0(i)/Dx->dx, y0_idx = _S2IDXtoY0(j)/Dy->dy,
-        z0_idx = _S3IDXtoZ0(k)/Dz->dz;
+      real_t x0_idx = _S1IDXtoX0(i)/rho->dx,
+        y0_idx = _S2IDXtoY0(j)/rho->dy,
+        z0_idx = _S3IDXtoZ0(k)/rho->dz;
       real_t dphi = d_phi->getTriCubicInterpolatedValue(x0_idx, y0_idx, z0_idx);
       D->_p(i,j,k) += dphi;
       v->_p(i,j,k) += dphi;
     }
   }
 
+  /**
+   * @brief      Compute initial conditions using a gaussian
+   * random field and 2LPT
+   * @details    See https://arxiv.org/pdf/0910.0258.pdf.
+   *  General alg. requires computing phi_1 and phi_2 from this paper,
+   *  performed in _setVDFrom2LPTPhi1 and _setVDFrom2LPTPhi2.
+   */
   void _initializeGaussianRandom()
   {
-    // consider perturbations to be given by 2LPT:
-    // https://arxiv.org/pdf/0910.0258.pdf
-    // General alg. requires computing phi_1 and phi_2.
-
     // gaussian random realization of rho
     fourierX->gaussianRandomRealization(&(*rho)[0]);
 
     // Compute phi_1 contribution in phi
     _setMetricPotential();
     // add contribution to Dx, Vx from phi_1, " with y, z
-    setVDFrom2LPTPhi1(vx, Dx, 1);
-    setVDFrom2LPTPhi1(vy, Dy, 2);
-    setVDFrom2LPTPhi1(vz, Dz, 3);
+    _setVDFrom2LPTPhi1(vx, Dx, 1);
+    _setVDFrom2LPTPhi1(vy, Dy, 2);
+    _setVDFrom2LPTPhi1(vz, Dz, 3);
 
     // Compute delta_2 in rho
     _compute2LPTDelta2();
     // set phi_2 per this density
     _setMetricPotential();
     // add contribution from phi_2
-    setVDFrom2LPTPhi2(vx, Dx, 1);
-    setVDFrom2LPTPhi2(vy, Dy, 2);
-    setVDFrom2LPTPhi2(vz, Dz, 3);
+    _setVDFrom2LPTPhi2(vx, Dx, 1);
+    _setVDFrom2LPTPhi2(vy, Dy, 2);
+    _setVDFrom2LPTPhi2(vz, Dz, 3);
+
+    // shift sheet so particles don't line up with gridpoints
+    idx_t i, j, k;
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+    {
+      Dx->_p(i,j,k) += 0.5*rho->dx;
+      Dy->_p(i,j,k) += 0.5*rho->dy;
+      Dz->_p(i,j,k) += 0.5*rho->dz;
+    }
+
+    Dx->roll_p();
+    Dy->roll_p();
+    Dz->roll_p();
+    vx->roll_p();
+    vy->roll_p();
+    vz->roll_p();
   }
 
-  void initialize(const Specs specs_in)
+  void _initialize(const Specs specs_in)
   {
     specs = specs_in;
 
@@ -755,170 +955,11 @@ public:
     _initializeFields();
   }
 
-  SheetSimulation(const Specs specs_in)
-  {
-    verbosity = none;
-    step = 0;
-    initialize(specs_in);
-  }
-
-  SheetSimulation(const Specs specs_in, Verbosity verbosity_in)
-  {
-    verbosity = verbosity_in;
-    initialize(specs_in);
-  }
-
-  ~SheetSimulation()
-  {
-    delete Dx;
-    delete Dy;
-    delete Dz;
-
-    delete vx;
-    delete vy;
-    delete vz;
-
-    delete rho;
-    delete phi;
-    delete d_phi;
-    delete fourierX;
-  }
-
-  std::string toStr(real_t val)
+  std::string _toStr(real_t val)
   {
     std::ostringstream out;
     out << std::setprecision(17) << val;
     return out.str();
-  }
-
-  void writeDensity(std::string filename)
-  {
-    _timer["writeDensity"].start();
-    filename = filename + ".gz";
-    gzFile fi = gzopen(filename.c_str(), "wb");
-
-    idx_t points = specs.nx*specs.ny*specs.nz;
-    for(idx_t p=0; p<points; ++p)
-    {
-      std::string str = toStr((*rho)[p]) + "\t";
-      gzwrite(fi, str.c_str(), str.length());
-    }
-    gzclose(fi);
-    _timer["writeDensity"].stop();
-  }
-
-  void writePositions(std::string filename)
-  {
-    _timer["writePositions"].start();
-    filename = filename + ".gz";
-    gzFile fi = gzopen(filename.c_str(), "wb");
-
-    idx_t points = specs.ns1*specs.ns2*specs.ns3;
-    for(idx_t p=0; p<points; ++p)
-    {
-      std::string str = toStr((*Dx)[p]) + "\t"
-        + toStr((*Dy)[p]) + "\t"
-        + toStr((*Dz)[p]) + "\t";
-      gzwrite(fi, str.c_str(), str.length());
-    }
-    gzclose(fi);
-    _timer["writePositions"].stop();
-  }
-
-  void writeStrips(std::string filename_base)
-  {
-    _timer["writeStrips"].start();
-    std::string filename = filename_base + "_density.strip.gz";
-    gzFile fi = gzopen(filename.c_str(), "ab");
-    for(idx_t p=0; p<specs.nx; ++p)
-    {
-      std::string str = toStr((*rho)(p,1,1)) + "\t";
-      gzwrite(fi, str.c_str(), str.length());
-    }
-    gzclose(fi);
-
-    filename = filename_base + "_x.strip.gz";
-    fi = gzopen(filename.c_str(), "ab");
-    for(idx_t p=0; p<specs.ns1; ++p)
-    {
-      std::string str = toStr((*Dx)(p,1,1) + _S1IDXtoX0(p)) + "\t";
-      gzwrite(fi, str.c_str(), str.length());
-    }
-    gzclose(fi);
-
-    filename = filename_base + "_vx.strip.gz";
-    fi = gzopen(filename.c_str(), "ab");
-    for(idx_t p=0; p<specs.ns1; ++p)
-    {
-      std::string str = toStr((*vx)(p,1,1)) + "\t";
-      gzwrite(fi, str.c_str(), str.length());
-    }
-    gzclose(fi);
-
-    filename = filename_base + "_d_phi.strip.gz";
-    fi = gzopen(filename.c_str(), "ab");
-    for(idx_t p=0; p<specs.nx; ++p)
-    {
-      std::string str = toStr((*d_phi)(p,1,1)) + "\t";
-      gzwrite(fi, str.c_str(), str.length());
-    }
-    gzclose(fi);
-
-    filename = filename_base + "_phi.strip.gz";
-    fi = gzopen(filename.c_str(), "ab");
-    for(idx_t p=0; p<specs.nx; ++p)
-    {
-      std::string str = toStr((*phi)(p,1,1)) + "\t";
-      gzwrite(fi, str.c_str(), str.length());
-    }
-    gzclose(fi);
-    _timer["writeStrips"].stop();
-  }
-
-  void writeInfo(std::string directory)
-  {
-    std::string filename (directory + "/SheetSimulation.info");
-
-    std::ofstream ofs;
-    ofs.open(filename, std::ofstream::out | std::ofstream::trunc);
-
-    ofs << "nx = " << specs.nx << std::endl;
-    ofs << "ny = " << specs.ny << std::endl;
-    ofs << "nz = " << specs.nz << std::endl;
-    ofs << "ns1 = " << specs.ns1 << std::endl;
-    ofs << "ns2 = " << specs.ns2 << std::endl;
-    ofs << "ns3 = " << specs.ns3 << std::endl;
-    ofs << "lx = " << specs.lx << std::endl;
-    ofs << "ly = " << specs.ly << std::endl;
-    ofs << "lz = " << specs.lz << std::endl;
-    ofs << "carriers_per_dx = " << specs.carriers_per_dx << std::endl;
-    ofs << "carriers_per_dy = " << specs.carriers_per_dy << std::endl;
-    ofs << "carriers_per_dz = " << specs.carriers_per_dz << std::endl;
-    ofs << "dt = " << specs.dt << std::endl;
-
-    if(specs.deposit == CIC)
-      ofs << "deposit = CIC " << std::endl;
-    if(specs.deposit == PCS)
-      ofs << "deposit = PCS " << std::endl;
-
-    ofs.close();
-  }
-
-  void writeConstraints(std::string directory)
-  {
-    _timer["writeConstraints"].start();
-    // call these to make sure data in phi, Dx, and vx are consistent
-    _stepInit();
-    _RK4Calc();
-
-    std::string filename (directory + "/constraints.dat.gz");
-
-    gzFile fi = gzopen(filename.c_str(), "ab");
-    std::string str = toStr(_computeTotalMomentum()) + "\t"
-                      + toStr(_computeTotalEnergy()) + "\n";
-    gzwrite(fi, str.c_str(), str.length());
-    gzclose(fi);
-    _timer["writeConstraints"].stop();
   }
 
   real_t _computeTotalMomentum()

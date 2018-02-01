@@ -85,6 +85,11 @@ public:
 
   void inverseLaplacian(RT *field)
   {
+    inverseLaplacian(field, 0);
+  }
+
+  void inverseLaplacian(RT *field, int window_power)
+  {
     IT i, j, k;
 
     fftw_execute_dft_r2c(p_r2c, field, f_field);
@@ -100,10 +105,20 @@ public:
 
           IT fft_index = _FFT_IDX(i,j,k);
 
-          RT pmag = std::sqrt( (px/lx)*(px/lx) + (py/ly)*(py/ly) + (pz/lz)*(pz/lz) )*2.0*M_PI;
+          RT pmag = std::sqrt( (px/lx)*(px/lx)
+            + (py/ly)*(py/ly) + (pz/lz)*(pz/lz) )*2.0*M_PI;
 
-          f_field[fft_index][0] /= -pmag*pmag*nx*ny*nz;
-          f_field[fft_index][1] /= -pmag*pmag*nx*ny*nz;
+          RT window_corr = 1.0;
+          if(window_power > 0)
+          {
+            RT sinc_x = px == 0 ? 1.0 : std::sin(M_PI*px/nx)/(M_PI*px/nx);
+            RT sinc_y = py == 0 ? 1.0 : std::sin(M_PI*py/ny)/(M_PI*py/ny);
+            RT sinc_z = pz == 0 ? 1.0 : std::sin(M_PI*pz/nz)/(M_PI*pz/nz);
+            window_corr = std::pow(sinc_x*sinc_y*sinc_z, window_power);
+          }
+
+          f_field[fft_index][0] /= -pmag*pmag*nx*ny*nz / window_corr;
+          f_field[fft_index][1] /= -pmag*pmag*nx*ny*nz / window_corr;
         }
 
     // zero mode?
@@ -208,6 +223,8 @@ public:
       for(j=0; j<ny; j++)
         for(k=0; k<nz/2+1; k++)
         {
+if(std::abs(i) < 4 && std::abs(j) < 4 && std::abs(k) < 4)
+{ // PS cutoff
           RT px = (RT) (i<=nx/2 ? i : i-nx);
           RT py = (RT) (j<=ny/2 ? j : j-ny);
           RT pz = (RT) k;
@@ -229,9 +246,10 @@ public:
           RT rand_phase = angular_distribution(gen);
 
           // Scale by power spectrum
-          scale = 0.01/std::sqrt(pmag);
+          scale = 1.0*std::pow(pmag, -3);
           f_field[fft_index][0] = scale*rand_mag*std::cos(rand_phase);
           f_field[fft_index][1] = scale*rand_mag*std::sin(rand_phase);
+}
         }
 
     // No zero-mode

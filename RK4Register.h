@@ -71,6 +71,18 @@ public:
     sim_dt = sim_dt_in;
   }
 
+  void roll_p()
+  {
+    for(IT k=0; k<this->_nz; ++k)
+      for(IT j=0; j<this->_ny; ++j)
+      {
+        RT buffer_val = _array_p[this->idx(0, j, k)];
+        for(IT i=0; i<this->_nx-1; ++i)
+          _array_p[this->idx(i, j, k)] = _array_p[this->idx(i+1, j, k)];
+        _array_p[this->idx(this->_nx-1, j, k)] = buffer_val;
+      }
+  }
+
   ~RK4Register()
   {
     delete [] _array_p;
