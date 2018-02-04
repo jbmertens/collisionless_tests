@@ -12,6 +12,8 @@
   _Pragma("omp parallel for") \
   ARRAY_LOOP(i, pts)
 
+enum InterpolationType { Trilinear, LMTricubic, CINTTricubic };
+
 template<typename IT>
 inline IT IT_mod(IT n, IT d)
 {
@@ -62,9 +64,13 @@ private:
     {
       _array[i] = 0.0;
     }
+
+    interpolationType = CINTTricubic;
   }
 
 public:
+
+  InterpolationType interpolationType;
 
   const IT &nx, &ny, &nz;
   const RT &lx, &ly, &lz;
@@ -94,9 +100,24 @@ public:
     _init(nx_in, ny_in, nz_in, lx_in, ly_in, lz_in);
   }
 
+  PeriodicArray(IT nx_in, IT ny_in, IT nz_in, RT lx_in, RT ly_in, RT lz_in,
+    InterpolationType type) :
+    nx(_nx), ny(_ny), nz(_nz),
+    lx(_lx), ly(_ly), lz(_lz),
+    dx(_dx), dy(_dy), dz(_dz)
+  {
+    interpolationType = type;
+    _init(nx_in, ny_in, nz_in, lx_in, ly_in, lz_in);
+  }
+
   ~PeriodicArray()
   {
     delete [] _array;
+  }
+
+  void setInterpolationType(InterpolationType type)
+  {
+    interpolationType = type;
   }
 
   IT idx(IT i_in, IT j_in, IT k_in) const
@@ -209,9 +230,28 @@ public:
       }
   }
 
+  RT getInterpolatedValue(RT i_in, RT j_in, RT k_in) const
+  {
+    switch(interpolationType)
+    {
+      case Trilinear:
+      default:
+        return getTriLinearInterpolatedValue(i_in, j_in, k_in);
+        break;
+
+      case LMTricubic:
+        return getLMTriCubicInterpolatedValue(i_in, j_in, k_in);
+        break;
+
+      case CINTTricubic:
+        return getCINTTriCubicInterpolatedValue(i_in, j_in, k_in);
+        break;
+    }
+  }
+
   // Weighted averaging / trilinear interpolation via
   // https://en.wikipedia.org/wiki/Trilinear_interpolation#Method
-  RT getInterpolatedValue(RT i_in, RT j_in, RT k_in) const
+  RT getTriLinearInterpolatedValue(RT i_in, RT j_in, RT k_in) const
   {
     IT il = i_in < 0 ? (IT) i_in - 1 : (IT) i_in; // Index "left" of i
     RT id = i_in - il; // fractional difference
@@ -228,12 +268,6 @@ public:
     RT c1 = c01*(1-jd) + c11*jd;
 
     return c0*(1-kd) + c1*kd;
-  }
-
-  RT getTriCubicInterpolatedValue(RT i_in, RT j_in, RT k_in) const
-  {
-    return getCINTTriCubicInterpolatedValue(i_in, j_in, k_in);
-    // return getLMTriCubicInterpolatedValue(i_in, j_in, k_in);
   }
 
   // Lekien-Marsden cubic spline

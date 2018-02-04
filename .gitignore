@@ -1,6 +1,3 @@
-*.gz
-sim_*/*
-
 # Prerequisites
 *.d
 
@@ -34,9 +31,15 @@ sim_*/*
 *.out
 *.app
 
-# Vim swap files
+# Swap/tmp files
 *.swp
+*.lyx~
+*.lyx#
 
 # Executables
 collisionless_tests
 run_tests
+
+# output
+*.gz
+sim_*/*

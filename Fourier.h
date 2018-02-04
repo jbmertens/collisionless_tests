@@ -52,12 +52,10 @@ public:
     lx = lx_in; ly = ly_in; lz = lz_in;
     dx = lx/nx; dy = ly/ny; dz = lz/nz;
 
-#ifdef USE_OPENMP
     std::cout << "Initializing FFTW class with OpenMP support, using "
       << omp_get_max_threads() << " threads." << std::endl;
     fftw_init_threads();
     fftw_plan_with_nthreads(omp_get_max_threads());
-#endif
 
     //fftw_malloc
     f_field = (fftw_complex *) fftw_malloc(nx*ny*(nz/2+1)
@@ -78,9 +76,7 @@ public:
     fftw_free(f_field);
     fftw_destroy_plan(p_r2c);
     fftw_destroy_plan(p_c2r);
-#ifdef USE_OPENMP
     fftw_cleanup_threads();
-#endif
   }
 
   void inverseLaplacian(RT *field)

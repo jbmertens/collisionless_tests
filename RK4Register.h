@@ -37,7 +37,7 @@ public:
    * @param sim_dt_in initial timestep
    */
   RK4Register(IT nx_in, IT ny_in, IT nz_in, RT lx_in, RT ly_in, RT lz_in,
-    RT sim_dt_in) :
+    RT sim_dt_in, InterpolationType interpolation_type) :
     PeriodicArray<IT, RT>(nx_in, ny_in, nz_in, lx_in, ly_in, lz_in)
   {
     // "active" array references PeriodicArray array
@@ -50,9 +50,7 @@ public:
     _array_f = new RT[this->_pts];
     // TODO: OMP simd
     // read https://stackoverflow.com/questions/14674049/parallel-for-vs-omp-simd-when-to-use-each
-#ifdef USE_OPENMP
 #pragma omp parallel for
-#endif
     for(IT i=0; i<this->_pts; ++i)
     {
       _array_p[i] = 0.0;
@@ -61,6 +59,8 @@ public:
     }
 
     setDt(sim_dt_in);
+
+    this->interpolationType = interpolation_type;
   }
 
   /**
@@ -110,9 +110,7 @@ public:
   void stepInit()
   {
     IT i;
-#ifdef USE_OPENMP
 #pragma omp parallel for default(shared) private(i)
-#endif
     for(i=0; i<this->_pts; ++i)
     {
       _array_a[i] = _array_p[i];
@@ -122,9 +120,7 @@ public:
 
   void K1Finalize()
   {
-#ifdef USE_OPENMP
 #pragma omp parallel for
-#endif
     for(IT i=0; i<this->_pts; ++i)
     {
       _array_f[i] += sim_dt*_array_c[i]/6.0;
@@ -136,9 +132,7 @@ public:
 
   void K2Finalize()
   {
-#ifdef USE_OPENMP
 #pragma omp parallel for
-#endif
     for(IT i=0; i<this->_pts; ++i)
     {
       _array_f[i] += sim_dt*_array_c[i]/3.0;
@@ -150,9 +144,7 @@ public:
 
   void K3Finalize()
   {
-#ifdef USE_OPENMP
 #pragma omp parallel for
-#endif
     for(IT i=0; i<this->_pts; ++i)
     {
       _array_f[i] += sim_dt*_array_c[i]/3.0;
@@ -164,9 +156,7 @@ public:
 
   void K4Finalize()
   {
-#ifdef USE_OPENMP
 #pragma omp parallel for
-#endif
     for(IT i=0; i<this->_pts; ++i)
     {
       _array_f[i] += sim_dt*_array_c[i]/6.0 + _array_p[i];

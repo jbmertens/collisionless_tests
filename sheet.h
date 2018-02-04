@@ -16,10 +16,10 @@
  *  - Metric coordinates
  *    Density and metric (Newtonian potential)
  */
-
 #ifndef SHEET
 #define SHEET
 
+#include "cosmology.h"
 #include "mutex_pool.h"
 #include "RK4Register.h"
 #include "PeriodicArray.h"
@@ -79,16 +79,17 @@ public:
           carriers_per_dz;
 
     real_t dt; ///< timestep
+    real_t t_0; ///< initial simulation time
 
     depositScheme deposit;
     carrierCountScheme carrier_count_scheme;
     initializationType initialization_type;
+    InterpolationType interpolation_type;
   };
 
   SheetSimulation(const Specs specs_in)
   {
     verbosity = none;
-    step = 0;
     _initialize(specs_in);
   }
 
@@ -133,26 +134,27 @@ public:
     _stepInit();
     
     if(verbosity == debug) std::cout << "Performing K1 step." << std::endl << std::flush;
-    _RK4Calc();
+    _RK4Calc(sim_t);
     if(verbosity == debug) std::cout << "  Finalizing." << std::endl << std::flush;
     _K1Finalize();
 
     if(verbosity == debug) std::cout << "Performing K2 step." << std::endl << std::flush;
-    _RK4Calc();
+    _RK4Calc(sim_t + specs.dt/2.0);
     if(verbosity == debug) std::cout << "  Finalizing." << std::endl << std::flush;
     _K2Finalize();
 
     if(verbosity == debug) std::cout << "Performing K3 step." << std::endl << std::flush;
-    _RK4Calc();
+    _RK4Calc(sim_t + specs.dt/2.0);
     if(verbosity == debug) std::cout << "  Finalizing." << std::endl << std::flush;
     _K3Finalize();
 
     if(verbosity == debug) std::cout << "Performing K4 step." << std::endl << std::flush;
-    _RK4Calc();
+    _RK4Calc(sim_t + specs.dt);
     if(verbosity == debug) std::cout << "  Finalizing." << std::endl << std::flush;
     _K4Finalize();
 
     step++;
+    sim_t += specs.dt;
   }
 
   void writeDensity(std::string filename)
@@ -265,15 +267,21 @@ public:
     if(specs.deposit == PCS)
       ofs << "deposit = PCS " << std::endl;
 
+    if(specs.interpolation_type == Trilinear)
+      ofs << "interpolation_type = Trilinear " << std::endl;
+    if(specs.interpolation_type == CINTTricubic)
+      ofs << "interpolation_type = CINTTricubic " << std::endl;
+
     ofs.close();
   }
 
   void writeConstraints(std::string directory)
   {
     _timer["writeConstraints"].start();
+    
     // call these to make sure data in phi, Dx, and vx are consistent
     _stepInit();
-    _RK4Calc();
+    _pushSheetToRho(sim_t);
 
     std::string filename (directory + "/constraints.dat.gz");
 
@@ -282,6 +290,7 @@ public:
                       + _toStr(_computeTotalEnergy()) + "\n";
     gzwrite(fi, str.c_str(), str.length());
     gzclose(fi);
+
     _timer["writeConstraints"].stop();
   }
 
@@ -293,7 +302,8 @@ private:
   typedef Fourier<idx_t, real_t> fourier_t;
 
   TimerManager _timer;
-  idx_t step;
+  idx_t step; ///< Step #
+  real_t sim_t; ///< simulation time
 
   Specs specs = {0};
   idx_t s1_dbg = 0, s2_dbg = 0, s3_dbg = 0;
@@ -460,9 +470,30 @@ private:
   }
 
   /**
+   * @brief      Populate density field given phase-space distribution
+   */
+  void _pushSheetToRho(real_t t)
+  {
+    idx_t i, j, k;
+    real_t a2 = std::pow(cosmology::a<real_t>(t), 2);
+    real_t H2 = std::pow(cosmology::H<real_t>(t), 2);
+
+    // clear rho
+    PARALLEL_SHEET_LOOP(i, rho->nx*rho->ny*rho->nz)
+      (*rho)[i] = 0;
+
+    // deposit "particles" from sheet
+    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
+      _pushSheetMassToRho(i, j, k);
+
+    // account for background cosmology
+    PARALLEL_SHEET_LOOP(i, rho->nx*rho->ny*rho->nz)
+      (*rho)[i] *= 3.0/2.0*H2*a2;
+  }
+
+  /**
    * Compute conribution to rho(x) from data in a phase-space
-   * sheet voxel and add to rho(x) grid. Do so via 1501.01959 mass
-   * deposition scheme.
+   * sheet voxel and add to rho(x) grid.
    * TODO: improve; consider higher-order or analytic versions of this?
    */
   void _pushSheetMassToRho(idx_t s1, idx_t s2, idx_t s3)
@@ -608,25 +639,18 @@ private:
   /**
    * @brief      Perform calculations needed to compute K's in an RK4
    */
-  void _RK4Calc()
+  void _RK4Calc(real_t t)
   {
     _timer["_RK4Calc"].start();
     idx_t i ,j, k;
+    real_t a2 = std::pow(cosmology::a<real_t>(t), 2);
 
     // density projection
-    // clear rho
     if(verbosity == debug) std::cout << "  Performing density projection..." << std::flush;
     _timer["_RK4Calc:_pushSheetMassToRho"].start();
-
-    idx_t p;
-    PARALLEL_SHEET_LOOP(p, rho->nx*rho->ny*rho->nz)
-      (*rho)[p] = 0;
-    PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
-      _pushSheetMassToRho(i, j, k);
-
+    _pushSheetToRho(t);
     _timer["_RK4Calc:_pushSheetMassToRho"].stop();
     if(verbosity == debug) std::cout << " done." << std::endl << std::flush;
-
 
     // Metric potential from density
     _timer["_RK4Calc:_setMetricPotential"].start();
@@ -640,13 +664,13 @@ private:
     _timer["_RK4Calc:x_Evaluation"].start();
     PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
     {
-      Dx->_c(i,j,k) = vx->_a(i,j,k);
-      Dy->_c(i,j,k) = vy->_a(i,j,k);
-      Dz->_c(i,j,k) = vz->_a(i,j,k);
+      Dx->_c(i,j,k) = vx->_a(i,j,k)/a2;
+      Dy->_c(i,j,k) = vy->_a(i,j,k)/a2;
+      Dz->_c(i,j,k) = vz->_a(i,j,k)/a2;
     }
     _timer["_RK4Calc:x_Evaluation"].stop();
 
-    // set d_phi to be dx_phi
+    // x-velocity: set d_phi to be dx_phi
     _timer["_RK4Calc:_setMetricDerivative"].start();
     _setMetricDerivative(1);
     _timer["_RK4Calc:_setMetricDerivative"].stop();
@@ -656,11 +680,12 @@ private:
       real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
       real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
       real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
-      vx->_c(i,j,k) = -1.0*d_phi->getTriCubicInterpolatedValue(
+      vx->_c(i,j,k) = -1.0*d_phi->getInterpolatedValue(
         x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
     }
     _timer["_RK4Calc:v_Evaluation"].stop();
-    // set d_phi to be dy_phi
+
+    // y-velocity: set d_phi to be dy_phi
     _timer["_RK4Calc:_setMetricDerivative"].start();
     _setMetricDerivative(2);
     _timer["_RK4Calc:_setMetricDerivative"].stop();
@@ -670,11 +695,12 @@ private:
       real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
       real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
       real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
-      vy->_c(i,j,k) = -1.0*d_phi->getTriCubicInterpolatedValue(
+      vy->_c(i,j,k) = -1.0*d_phi->getInterpolatedValue(
         x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
     }
     _timer["_RK4Calc:v_Evaluation"].stop();
-    // set d_phi to be dz_phi
+
+    // z-velocity: set d_phi to be dz_phi
     _timer["_RK4Calc:_setMetricDerivative"].start();
     _setMetricDerivative(3);
     _timer["_RK4Calc:_setMetricDerivative"].stop();
@@ -684,7 +710,7 @@ private:
       real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
       real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
       real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
-      vz->_c(i,j,k) = -1.0*d_phi->getTriCubicInterpolatedValue(
+      vz->_c(i,j,k) = -1.0*d_phi->getInterpolatedValue(
         x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
     }
     _timer["_RK4Calc:v_Evaluation"].stop();
@@ -752,31 +778,41 @@ private:
     switch(specs.initialization_type)
     {
       case uniform1d :
+        std::cout << "Initializing fields with a 1-d uniform test."
+          << std::endl;
         _initialize1DUniform();
         break;
 
       case uniform1dv :
+        std::cout << "Initializing fields with a 1-d uniform moving test..."
+          << std::endl;
         _initialize1DUniformMoving();
         break;
 
       case gaussian_random :
+        std::cout << "Initializing fields with a gaussian random / 2LPT field..."
+          << std::endl;
         _initializeGaussianRandom();
         break;
 
       case overdensity2d :
+        std::cout << "Initializing fields with a 2-d overdensity..."
+          << std::endl;
         _initialize2DOverdensity();
         break;
 
       case overdensity1d :
       default :
+        std::cout << "Initializing fields with a 1-d overdensity..."
+          << std::endl;
         _initialize1DOverdensity();
         break;
     }
     
-    // copy to _a registers as well,
-    // set metric for output
+    // _p register should be set, copy to _a registers as well
     _stepInit();
-    _RK4Calc();
+    // Ensure density field is consistent
+    _pushSheetToRho(sim_t);
     
     _timer["_initializeFields"].stop();
   }
@@ -833,6 +869,10 @@ private:
    */
   void _setVDFrom2LPTPhi1(RK4_t * v, RK4_t * D, int n)
   {
+    real_t D1 = cosmology::D<real_t>(specs.t_0);
+    real_t f1 = cosmology::f<real_t>(specs.t_0);
+    real_t H = cosmology::H<real_t>(specs.t_0);
+
     idx_t i, j, k;
     _setMetricDerivative(n);
     PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
@@ -840,9 +880,9 @@ private:
       real_t x0_idx = _S1IDXtoX0(i)/rho->dx,
         y0_idx = _S2IDXtoY0(j)/rho->dy,
         z0_idx = _S3IDXtoZ0(k)/rho->dz;
-      real_t dphi = d_phi->getTriCubicInterpolatedValue(x0_idx, y0_idx, z0_idx);
-      D->_p(i,j,k) = -dphi;
-      v->_p(i,j,k) = -dphi;
+      real_t dphi = d_phi->getInterpolatedValue(x0_idx, y0_idx, z0_idx);
+      D->_p(i,j,k) = -D1*dphi;
+      v->_p(i,j,k) = -D1*f1*H*dphi;
     }
   }
 
@@ -872,6 +912,10 @@ private:
    */
   void _setVDFrom2LPTPhi2(RK4_t * v, RK4_t * D, int n)
   {
+    real_t D2 = cosmology::D2<real_t>(specs.t_0);
+    real_t f2 = cosmology::f2<real_t>(specs.t_0);
+    real_t H = cosmology::H<real_t>(specs.t_0);
+
     idx_t i, j, k;
     _setMetricDerivative(n);
     PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
@@ -879,9 +923,9 @@ private:
       real_t x0_idx = _S1IDXtoX0(i)/rho->dx,
         y0_idx = _S2IDXtoY0(j)/rho->dy,
         z0_idx = _S3IDXtoZ0(k)/rho->dz;
-      real_t dphi = d_phi->getTriCubicInterpolatedValue(x0_idx, y0_idx, z0_idx);
-      D->_p(i,j,k) += dphi;
-      v->_p(i,j,k) += dphi;
+      real_t dphi = d_phi->getInterpolatedValue(x0_idx, y0_idx, z0_idx);
+      D->_p(i,j,k) += D2*dphi;
+      v->_p(i,j,k) += D2*f2*H*dphi;
     }
   }
 
@@ -921,13 +965,6 @@ private:
       Dy->_p(i,j,k) += 0.5*rho->dy;
       Dz->_p(i,j,k) += 0.5*rho->dz;
     }
-
-    Dx->roll_p();
-    Dy->roll_p();
-    Dz->roll_p();
-    vx->roll_p();
-    vy->roll_p();
-    vz->roll_p();
   }
 
   void _initialize(const Specs specs_in)
@@ -936,33 +973,36 @@ private:
 
     // Phase-space variables
     Dx = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
-      specs.lx, specs.ly, specs.lz, specs.dt);
+      specs.lx, specs.ly, specs.lz, specs.dt, specs.interpolation_type);
     Dy = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
-      specs.lx, specs.ly, specs.lz, specs.dt);
+      specs.lx, specs.ly, specs.lz, specs.dt, specs.interpolation_type);
     Dz = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
-      specs.lx, specs.ly, specs.lz, specs.dt);
+      specs.lx, specs.ly, specs.lz, specs.dt, specs.interpolation_type);
     vx = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
-      specs.lx, specs.ly, specs.lz, specs.dt);
+      specs.lx, specs.ly, specs.lz, specs.dt, specs.interpolation_type);
     vy = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
-      specs.lx, specs.ly, specs.lz, specs.dt);
+      specs.lx, specs.ly, specs.lz, specs.dt, specs.interpolation_type);
     vz = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
-      specs.lx, specs.ly, specs.lz, specs.dt);
+      specs.lx, specs.ly, specs.lz, specs.dt, specs.interpolation_type);
 
     // Metric-space fields
     rho = new array_t(specs.nx, specs.ny, specs.nz,
-      specs.lx, specs.ly, specs.lz);
+      specs.lx, specs.ly, specs.lz, specs.interpolation_type);
     d_phi = new array_t(specs.nx, specs.ny, specs.nz,
-      specs.lx, specs.ly, specs.lz);
+      specs.lx, specs.ly, specs.lz, specs.interpolation_type);
     phi = new array_t(specs.nx, specs.ny, specs.nz,
-      specs.lx, specs.ly, specs.lz);
+      specs.lx, specs.ly, specs.lz, specs.interpolation_type);
 
     // For computing Fourier transforms
     fourierX = new fourier_t(specs.nx, specs.ny, specs.nz,
       specs.lx, specs.ly, specs.lz, &(*rho)[0]);
 
-    _initializeFields();
-
     pool = mutex_alloc_custom(specs.nx, SPLATT_DEFAULT_LOCK_PAD);
+
+    _initializeFields(); // needs pool allocated first
+
+    step = 0;
+    sim_t = specs.t_0;
   }
 
   std::string _toStr(real_t val)
@@ -995,7 +1035,7 @@ private:
       std::pow(tot_x_mom,2)
       + std::pow(tot_y_mom,2) 
       + std::pow(tot_z_mom,2)
-    );
+    )/cosmology::a<real_t>(sim_t);
   }
 
   real_t _computeTotalEnergy()
@@ -1017,7 +1057,7 @@ private:
           real_t y_idx = ( _S2IDXtoY0(j) + (*Dy)(i, j, k) ) / rho->dy;
           real_t z_idx = ( _S3IDXtoZ0(k) + (*Dz)(i, j, k) ) / rho->dz;
 
-          real_t potential = phi->getTriCubicInterpolatedValue(x_idx, y_idx, z_idx);
+          real_t potential = phi->getInterpolatedValue(x_idx, y_idx, z_idx);
 
           tot_E += m/2.0*(v2 + potential);
         }

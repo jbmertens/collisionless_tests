@@ -46,7 +46,9 @@ void * splatt_malloc(
     std::size_t const bytes)
 {
   void * ptr;
-  posix_memalign(&ptr, 64, bytes);
+  int ret = posix_memalign(&ptr, 64, bytes);
+  if(ret != 0)
+    throw ret;
 
   return ptr;
 }
