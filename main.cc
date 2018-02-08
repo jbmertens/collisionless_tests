@@ -41,26 +41,26 @@ void runSim(SheetSimulation::Specs specs, std::string out_base_dir,
 
 void runOverdensityTests(SheetSimulation::Specs specs)
 {
-  specs.initialization_type = SheetSimulation::initializationType::overdensity2d;
+  specs.initialization_type = SheetSimulation::initializationType::overdensity1d;
   SheetSimulation::Specs specs_alt = {0};
 
   specs_alt = specs;
-  specs_alt.ns1 = 31; specs_alt.ns2 = 31;
-  specs_alt.nx = 32; specs_alt.ny = 32;
-  specs_alt.carriers_per_dx = 0;
-  runSim(specs_alt, "sim_ns031_nx032_cpdx0", 500, false);
+  specs_alt.ns1 = 31; // specs_alt.ns2 = 31;
+  specs_alt.nx = 32; // specs_alt.ny = 32;
+  specs_alt.carriers_per_dx = 8;
+  runSim(specs_alt, "sim_ns031_nx032_cpdx0", 400, false);
 
   specs_alt = specs;
-  specs_alt.ns1 = 63; specs_alt.ns2 = 63;
-  specs_alt.nx = 64; specs_alt.ny = 64;
-  specs_alt.carriers_per_dx = 0;
-  runSim(specs_alt, "sim_ns063_nx064_cpdx0", 500, false);
+  specs_alt.ns1 = 63; // specs_alt.ns2 = 63;
+  specs_alt.nx = 64; // specs_alt.ny = 64;
+  specs_alt.carriers_per_dx = 8;
+  runSim(specs_alt, "sim_ns063_nx064_cpdx0", 400, false);
 
   specs_alt = specs;
-  specs_alt.ns1 = 127; specs_alt.ns2 = 127;
-  specs_alt.nx = 128; specs_alt.ny = 128;
-  specs_alt.carriers_per_dx = 0;
-  runSim(specs_alt, "sim_ns127_nx128_cpdx0", 500, false);
+  specs_alt.ns1 = 127; // specs_alt.ns2 = 127;
+  specs_alt.nx = 128; // specs_alt.ny = 128;
+  specs_alt.carriers_per_dx = 8;
+  runSim(specs_alt, "sim_ns127_nx128_cpdx0", 400, false);
 }
 
 
@@ -68,14 +68,6 @@ void runUniformTests(SheetSimulation::Specs specs)
 {
   specs.initialization_type = SheetSimulation::initializationType::uniform1dv;
   SheetSimulation::Specs specs_alt = {0};
-
-
-specs_alt = specs;
-specs_alt.ns1 = 63;
-specs_alt.nx = 64;
-specs_alt.carriers_per_dx = 0;
-runSim(specs_alt, "sim_ns063_nx064_cpdx0", 2, false);
-return;
 
   specs_alt = specs;
   specs_alt.ns1 = 63;
@@ -159,8 +151,8 @@ int main(int argc, char **argv)
   specs.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_ds;
   specs.interpolation_type = CINTTricubic; // or Trilinear
 
-  // runOverdensityTests(specs);
-  runUniformTests(specs);
+  runOverdensityTests(specs);
+  // runUniformTests(specs);
   // runGaussianField();
 
   return 0;

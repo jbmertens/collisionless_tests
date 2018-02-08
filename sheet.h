@@ -279,6 +279,7 @@ public:
   {
     // call these to make sure data in phi, Dx, and vx are consistent
     _stepInit();
+    _applyPeriodicFieldBoundaryConditions();
     _pushSheetToRho(sim_t);
     _setMetricPotential();
     _setMetricDerivative(1);
@@ -408,7 +409,6 @@ private:
     idx_t ix = (idx_t) x_idx;
     idx_t iy = (idx_t) y_idx;
     idx_t iz = (idx_t) z_idx;
-
     real_t norm = 0.0;
     for(idx_t i=-1; i<=2; ++i)
       for(idx_t j=-1; j<=2; ++j)
@@ -431,7 +431,7 @@ private:
     real_t pcs;
     for(idx_t i=-1; i<=2; ++i)
     {
-      // idx_t mutex_idx = IT_mod<idx_t>(ix+i, specs.nx);
+      // idx_t mutex_idx = ix;
       // mutex_set_lock(pool, mutex_idx);
       for(idx_t j=-1; j<=2; ++j)
         for(idx_t k=-1; k<=2; ++k)
@@ -511,6 +511,16 @@ private:
 
     // apply PBCs
     rho->applyPeriodicBoundaryConditions();
+  }
+
+  void _applyPeriodicFieldBoundaryConditions()
+  {
+    Dx->applyPeriodicBoundaryConditions();
+    Dy->applyPeriodicBoundaryConditions();
+    Dz->applyPeriodicBoundaryConditions();
+    vx->applyPeriodicBoundaryConditions();
+    vy->applyPeriodicBoundaryConditions();
+    vz->applyPeriodicBoundaryConditions();
   }
 
   /**
@@ -665,6 +675,7 @@ private:
     _timer["_RK4Calc"].start();
     idx_t i ,j, k;
     real_t a2 = std::pow(cosmology::a<real_t>(t), 2);
+    _applyPeriodicFieldBoundaryConditions(); // make sure field boundaries are OK
 
     // density projection
     if(verbosity == debug) std::cout << "  Performing density projection..." << std::flush;
@@ -832,6 +843,7 @@ private:
     
     // _p register should be set, copy to _a registers as well
     _stepInit();
+    _applyPeriodicFieldBoundaryConditions();
     // Ensure density field is consistent
     _pushSheetToRho(sim_t);
     
@@ -866,7 +878,7 @@ private:
     PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
     {
       real_t x_frac = ((real_t) i)/specs.ns1 - 0.5;
-      Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 0.5*std::exp(-1.0*std::pow(x_frac/0.05, 2))*x_frac;
+      Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 0.01*std::exp(-1.0*std::pow(x_frac/0.05, 2))*x_frac;
     }
   }
 
@@ -878,8 +890,8 @@ private:
     {
       real_t x_frac = ((real_t) i)/specs.ns1 - 0.5;
       real_t y_frac = ((real_t) j)/specs.ns2 - 0.5;
-      Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 0.5*std::exp(-1.0*std::pow(x_frac/0.05, 2))*x_frac;
-      Dy->_p(i,j,k) = 1.0/specs.ny/5.0 - 0.5*std::exp(-1.0*std::pow(y_frac/0.05, 2))*y_frac;
+      Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 0.01*std::exp(-1.0*std::pow(x_frac/0.05, 2))*x_frac;
+      Dy->_p(i,j,k) = 1.0/specs.ny/5.0 - 0.01*std::exp(-1.0*std::pow(y_frac/0.05, 2))*y_frac;
     }
   }
 

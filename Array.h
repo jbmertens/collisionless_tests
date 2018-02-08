@@ -244,8 +244,8 @@ public:
   RT getInterpolatedValueAtModX(RT i_in, RT j_in, RT k_in) const
   {
     RT i_mod = i_in - _nx*std::floor(i_in/_nx);
-    RT j_mod = j_in - _ny*std::floor(j_in/_nz);
-    RT k_mod = k_in - _nz*std::floor(k_in/_ny);
+    RT j_mod = j_in - _ny*std::floor(j_in/_ny);
+    RT k_mod = k_in - _nz*std::floor(k_in/_nz);
     return getInterpolatedValue(i_mod, j_mod, k_mod);
   }
 
