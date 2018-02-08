@@ -3,8 +3,8 @@ include Makefile.inc
 
 CXXFLAGS += -std=c++11
 
-LDLIBS += -lfftw3_omp
-LDLIBS += -lfftw3
+LDLIBS += -lfftw3f_omp
+LDLIBS += -lfftw3f
 LDLIBS += -lz
 
 # Comment this out if you are using the Intel compiler (`icpc`).

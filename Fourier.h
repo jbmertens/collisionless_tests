@@ -14,19 +14,26 @@ template<typename IT, typename RT>
 class Fourier
 {
   // FFT field
-  fftw_complex *f_field;
+  fftwf_complex * f_field;
+  // Array for FFTs
+  RT * unghosted_field;
 
   IT nx, ny, nz; ///< # Samples in each dimension
   RT lx, ly, lz; ///< Physical domain lengths
   RT dx, dy, dz; ///< Length elements
 
   // plans for taking FFTs
-  fftw_plan p_c2r;
-  fftw_plan p_r2c;
+  fftwf_plan p_c2r;
+  fftwf_plan p_r2c;
 
   IT _F_IDX(IT i, IT j, IT k)
   {
     return i*ny*nz + j*nz + k;
+  }
+
+  IT _F_IDX_G(IT i, IT j, IT k, IT ng)
+  {
+    return (i+ng)*(ny+2*ng)*(nz+2*ng) + (j+ng)*(nz+2*ng) + k+ng;
   }
 
   IT _FFT_IDX(IT i, IT j, IT k)
@@ -54,29 +61,59 @@ public:
 
     std::cout << "Initializing FFTW class with OpenMP support, using "
       << omp_get_max_threads() << " threads." << std::endl;
-    fftw_init_threads();
-    fftw_plan_with_nthreads(omp_get_max_threads());
+    fftwf_init_threads();
+    fftwf_plan_with_nthreads(omp_get_max_threads());
 
-    //fftw_malloc
-    f_field = (fftw_complex *) fftw_malloc(nx*ny*(nz/2+1)
-                                           *((long long) sizeof(fftw_complex)));
+    //fftwf_malloc
+    f_field = (fftwf_complex *) fftwf_malloc(nx*ny*(nz/2+1)
+                                           *((long long) sizeof(fftwf_complex)));
+    unghosted_field = new RT[nx*ny*nz];
 
     // create plans
-    p_r2c = fftw_plan_dft_r2c_3d(nx, ny, nz,
+    p_r2c = fftwf_plan_dft_r2c_3d(nx, ny, nz,
                                  tmp_field, f_field,
-                                 FFTW_MEASURE);
-    p_c2r = fftw_plan_dft_c2r_3d(nx, ny, nz,
+                                 FFTW_ESTIMATE);
+    p_c2r = fftwf_plan_dft_c2r_3d(nx, ny, nz,
                                  f_field, tmp_field,
-                                 FFTW_MEASURE);
+                                 FFTW_ESTIMATE);
   }
 
   ~Fourier()
   {
     // dealloc
-    fftw_free(f_field);
-    fftw_destroy_plan(p_r2c);
-    fftw_destroy_plan(p_c2r);
-    fftw_cleanup_threads();
+    delete [] unghosted_field;
+    fftwf_free(f_field);
+    fftwf_destroy_plan(p_r2c);
+    fftwf_destroy_plan(p_c2r);
+    fftwf_cleanup_threads();
+  }
+
+  void inverseLaplacian(RT *field, IT window_power, IT num_ghost_cells)
+  {
+    IT i, j, k;
+
+    // copy non-ghost cells to unghosted_field
+#pragma omp parallel for collapse(3)
+    for(i=0; i<nx; ++i)
+      for(j=0; j<ny; ++j)
+        for(k=0; k<nz; ++k)
+        {
+          unghosted_field[_F_IDX(i,j,k)]
+            = field[_F_IDX_G(i,j,k,num_ghost_cells)];
+        }
+
+    // inverse laplacian on unghosted_field
+    inverseLaplacian(unghosted_field, window_power);
+
+    // copy back to non-ghost cells
+#pragma omp parallel for collapse(3)
+    for(i=0; i<nx; ++i)
+      for(j=0; j<ny; ++j)
+        for(k=0; k<nz; ++k)
+        {
+          field[_F_IDX_G(i,j,k,num_ghost_cells)]
+           = unghosted_field[_F_IDX(i,j,k)];
+        }
   }
 
   void inverseLaplacian(RT *field)
@@ -84,11 +121,11 @@ public:
     inverseLaplacian(field, 0);
   }
 
-  void inverseLaplacian(RT *field, int window_power)
+  void inverseLaplacian(RT *field, IT window_power)
   {
     IT i, j, k;
 
-    fftw_execute_dft_r2c(p_r2c, field, f_field);
+    fftwf_execute_dft_r2c(p_r2c, field, f_field);
 
 #pragma omp parallel for collapse(3)
     for(i=0; i<nx; i++)
@@ -121,14 +158,14 @@ public:
     f_field[0][0] = 0;
     f_field[0][1] = 0;
 
-    fftw_execute_dft_c2r(p_c2r, f_field, field);
+    fftwf_execute_dft_c2r(p_c2r, f_field, field);
   }
 
   void periodicGradient(RT *field, IT grad_dir)
   {
     IT i, j, k;
 
-    fftw_execute_dft_r2c(p_r2c, field, f_field);
+    fftwf_execute_dft_r2c(p_r2c, field, f_field);
 
 #pragma omp parallel for collapse(3)
     for(i=0; i<nx; i++)
@@ -158,14 +195,14 @@ public:
     f_field[0][0] = 0;
     f_field[0][1] = 0;
 
-    fftw_execute_dft_c2r(p_c2r, f_field, field);
+    fftwf_execute_dft_c2r(p_c2r, f_field, field);
   }
 
   void inverseGradient(RT *field, IT grad_dir)
   {
     IT i, j, k;
 
-    fftw_execute_dft_r2c(p_r2c, field, f_field);
+    fftwf_execute_dft_r2c(p_r2c, field, f_field);
 
 #pragma omp parallel for collapse(3)
     for(i=0; i<nx; i++)
@@ -199,7 +236,26 @@ public:
           }
         }
 
-    fftw_execute_dft_c2r(p_c2r, f_field, field);
+    fftwf_execute_dft_c2r(p_c2r, f_field, field);
+  }
+
+  /**
+   * @brief Gaussian random field ICs
+   */
+  void gaussianRandomRealization(RT * field, IT num_ghost_cells)
+  {
+    // GRF in internal array
+    gaussianRandomRealization(unghosted_field);
+    // copy to field w/ ghosts
+    IT i, j, k;
+#pragma omp parallel for collapse(3)
+    for(i=0; i<nx; i++)
+      for(j=0; j<ny; j++)
+        for(k=0; k<nz; k++)
+        {
+          field[_F_IDX_G(i,j,k,num_ghost_cells)]
+            = unghosted_field[_F_IDX(i,j,k)];
+        }
   }
 
   /**
@@ -254,7 +310,7 @@ if(std::abs(i) < 4 && std::abs(j) < 4 && std::abs(k) < 4)
 
     // FFT back; 'field' array should now be populated
     // with a gaussian random field
-    fftw_execute_dft_c2r(p_c2r, f_field, field);
+    fftwf_execute_dft_c2r(p_c2r, f_field, field);
   }
 
 };

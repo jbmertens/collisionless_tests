@@ -4,7 +4,7 @@
 #include <string>
 #include <utility>
 #include <iostream>
-#include "PeriodicArray.h"
+#include "Array.h"
 
 /**
  * @brief RK4 Class for integration
@@ -13,7 +13,7 @@
  * @tparam RT Real type
  */
 template<typename IT, typename RT>
-class RK4Register : public PeriodicArray<IT, RT>
+class RK4Register : public Array<IT, RT>
 {
 private:
   RT sim_dt; ///< Simulation timestep
@@ -37,21 +37,21 @@ public:
    * @param sim_dt_in initial timestep
    */
   RK4Register(IT nx_in, IT ny_in, IT nz_in, RT lx_in, RT ly_in, RT lz_in,
-    RT sim_dt_in, InterpolationType interpolation_type) :
-    PeriodicArray<IT, RT>(nx_in, ny_in, nz_in, lx_in, ly_in, lz_in)
+    RT sim_dt_in, arrayInterpolationType interpolation_type) :
+    Array<IT, RT>(nx_in, ny_in, nz_in, lx_in, ly_in, lz_in)
   {
-    // "active" array references PeriodicArray array
+    // "active" array references Array array
     _array_a = this->_array;
 
     // allocate storage for additional registers
-    // TODO: vectors
-    _array_p = new RT[this->_pts];
-    _array_c = new RT[this->_pts];
-    _array_f = new RT[this->_pts];
+    // TODO: vectors?
+    _array_p = new RT[this->_pts_inc];
+    _array_c = new RT[this->_pts_inc];
+    _array_f = new RT[this->_pts_inc];
     // TODO: OMP simd
     // read https://stackoverflow.com/questions/14674049/parallel-for-vs-omp-simd-when-to-use-each
 #pragma omp parallel for
-    for(IT i=0; i<this->_pts; ++i)
+    for(IT i=0; i<this->_pts_inc; ++i)
     {
       _array_p[i] = 0.0;
       _array_c[i] = 0.0;
@@ -60,7 +60,7 @@ public:
 
     setDt(sim_dt_in);
 
-    this->interpolationType = interpolation_type;
+    this->interpolation_type = interpolation_type;
   }
 
   /**
@@ -69,18 +69,6 @@ public:
   void setDt(RT sim_dt_in)
   {
     sim_dt = sim_dt_in;
-  }
-
-  void roll_p()
-  {
-    for(IT k=0; k<this->_nz; ++k)
-      for(IT j=0; j<this->_ny; ++j)
-      {
-        RT buffer_val = _array_p[this->idx(0, j, k)];
-        for(IT i=0; i<this->_nx-1; ++i)
-          _array_p[this->idx(i, j, k)] = _array_p[this->idx(i+1, j, k)];
-        _array_p[this->idx(this->_nx-1, j, k)] = buffer_val;
-      }
   }
 
   ~RK4Register()
@@ -110,8 +98,8 @@ public:
   void stepInit()
   {
     IT i;
-#pragma omp parallel for default(shared) private(i)
-    for(i=0; i<this->_pts; ++i)
+#pragma omp parallel for
+    for(i=0; i<this->_pts_inc; ++i)
     {
       _array_a[i] = _array_p[i];
       _array_f[i] = 0;
@@ -121,7 +109,7 @@ public:
   void K1Finalize()
   {
 #pragma omp parallel for
-    for(IT i=0; i<this->_pts; ++i)
+    for(IT i=0; i<this->_pts_inc; ++i)
     {
       _array_f[i] += sim_dt*_array_c[i]/6.0;
       _array_c[i] = _array_p[i] + sim_dt*_array_c[i]/2.0;
@@ -133,7 +121,7 @@ public:
   void K2Finalize()
   {
 #pragma omp parallel for
-    for(IT i=0; i<this->_pts; ++i)
+    for(IT i=0; i<this->_pts_inc; ++i)
     {
       _array_f[i] += sim_dt*_array_c[i]/3.0;
       _array_c[i] = _array_p[i] + sim_dt*_array_c[i]/2.0;
@@ -145,7 +133,7 @@ public:
   void K3Finalize()
   {
 #pragma omp parallel for
-    for(IT i=0; i<this->_pts; ++i)
+    for(IT i=0; i<this->_pts_inc; ++i)
     {
       _array_f[i] += sim_dt*_array_c[i]/3.0;
       _array_c[i] = _array_p[i] + sim_dt*_array_c[i];
@@ -157,7 +145,7 @@ public:
   void K4Finalize()
   {
 #pragma omp parallel for
-    for(IT i=0; i<this->_pts; ++i)
+    for(IT i=0; i<this->_pts_inc; ++i)
     {
       _array_f[i] += sim_dt*_array_c[i]/6.0 + _array_p[i];
       _array_p[i] = _array_f[i];

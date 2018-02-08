@@ -22,7 +22,7 @@
 #include "cosmology.h"
 #include "mutex_pool.h"
 #include "RK4Register.h"
-#include "PeriodicArray.h"
+#include "Array.h"
 #include "Fourier.h"
 #include "Timer.h"
 #include <cmath>
@@ -57,7 +57,7 @@ class SheetSimulation
 public:
 
   typedef long long idx_t;
-  typedef double real_t;
+  typedef float real_t;
 
   enum Verbosity { none, minimal, verbose, debug };
   Verbosity verbosity;
@@ -84,7 +84,7 @@ public:
     depositScheme deposit;
     carrierCountScheme carrier_count_scheme;
     initializationType initialization_type;
-    InterpolationType interpolation_type;
+    arrayInterpolationType interpolation_type;
   };
 
   SheetSimulation(const Specs specs_in)
@@ -275,14 +275,19 @@ public:
     ofs.close();
   }
 
+  void prepOutput()
+  {
+    // call these to make sure data in phi, Dx, and vx are consistent
+    _stepInit();
+    _pushSheetToRho(sim_t);
+    _setMetricPotential();
+    _setMetricDerivative(1);
+  }
+
   void writeConstraints(std::string directory)
   {
     _timer["writeConstraints"].start();
     
-    // call these to make sure data in phi, Dx, and vx are consistent
-    _stepInit();
-    _pushSheetToRho(sim_t);
-
     std::string filename (directory + "/constraints.dat.gz");
 
     gzFile fi = gzopen(filename.c_str(), "ab");
@@ -298,7 +303,7 @@ private:
 
   // internal types
   typedef RK4Register<idx_t, real_t> RK4_t;
-  typedef PeriodicArray<idx_t, real_t> array_t;
+  typedef Array<idx_t, real_t> array_t;
   typedef Fourier<idx_t, real_t> fourier_t;
 
   TimerManager _timer;
@@ -331,17 +336,26 @@ private:
   real_t _S2IDXtoY0(real_t s2) { return s2*specs.ly/specs.ns2; }
   real_t _S3IDXtoZ0(real_t s3) { return s3*specs.lz/specs.ns3; }
 
+  real_t _periodic_mod(real_t n, real_t d)
+  {
+    return n - d*std::floor(n/d);
+  }
+
   // TODO: 2nd-order or higher kernels?
   void _MassDeposit(real_t weight, real_t x_idx, real_t y_idx, real_t z_idx)
   {
+    real_t x_idx_norm = _periodic_mod(x_idx, rho->nx);
+    real_t y_idx_norm = _periodic_mod(y_idx, rho->ny);
+    real_t z_idx_norm = _periodic_mod(z_idx, rho->nz);
+
     switch (specs.deposit)
     {
       case PCS:
-        _PCSDeposit(weight, x_idx, y_idx, z_idx);
+        _PCSDeposit(weight, x_idx_norm, y_idx_norm, z_idx_norm);
         break;
       case CIC:
       default:
-        _CICDeposit(weight, x_idx, y_idx, z_idx);
+        _CICDeposit(weight, x_idx_norm, y_idx_norm, z_idx_norm);
         break;
     }
   }
@@ -355,17 +369,17 @@ private:
            x_h, y_h, z_h;
 
     // gridpoint index "left" of x_idx
-    ix = (x_idx < 0 ? (idx_t) x_idx - 1 : (idx_t) x_idx );
+    ix = (idx_t) x_idx;
     ixp = ix + 1;
     x_f = x_idx - (real_t) ix;
     x_h = 1.0 - x_f;
 
-    iy = (y_idx < 0 ? (idx_t) y_idx - 1 : (idx_t) y_idx );
+    iy = (idx_t) y_idx;
     iyp = iy + 1;
     y_f = y_idx - (real_t) iy;
     y_h = 1.0 - y_f;
 
-    iz = (z_idx < 0 ? (idx_t) z_idx - 1 : (idx_t) z_idx );
+    iz = (idx_t) z_idx;
     izp = iz + 1;
     z_f = z_idx - (real_t) iz;
     z_h = 1.0 - z_f;
@@ -391,9 +405,9 @@ private:
 
   void _PCSDeposit(real_t weight, real_t x_idx, real_t y_idx, real_t z_idx)
   {
-    idx_t ix = (x_idx < 0 ? (idx_t) x_idx - 1 : (idx_t) x_idx );
-    idx_t iy = (y_idx < 0 ? (idx_t) y_idx - 1 : (idx_t) y_idx );
-    idx_t iz = (z_idx < 0 ? (idx_t) z_idx - 1 : (idx_t) z_idx );
+    idx_t ix = (idx_t) x_idx;
+    idx_t iy = (idx_t) y_idx;
+    idx_t iz = (idx_t) z_idx;
 
     real_t norm = 0.0;
     for(idx_t i=-1; i<=2; ++i)
@@ -417,8 +431,8 @@ private:
     real_t pcs;
     for(idx_t i=-1; i<=2; ++i)
     {
-      idx_t mutex_idx = IT_mod<idx_t>(ix+i, specs.nx);
-      mutex_set_lock(pool, mutex_idx);
+      // idx_t mutex_idx = IT_mod<idx_t>(ix+i, specs.nx);
+      // mutex_set_lock(pool, mutex_idx);
       for(idx_t j=-1; j<=2; ++j)
         for(idx_t k=-1; k<=2; ++k)
         {
@@ -429,15 +443,17 @@ private:
           if(s<1.0)
           {
             pcs = (4.0 - 6.0*s*s + 3.0*s*s*s)/6.0;
+#pragma omp atomic
             (*rho)(ix+i, iy+j, iz+k) += pcs*weight/norm;
           }
           else if(s<2.0 && s>=1.0)
           {
             pcs = std::pow(2.0 - s, 3)/6.0;
+#pragma omp atomic
             (*rho)(ix+i, iy+j, iz+k) += pcs*weight/norm;
           }
         }
-      mutex_unset_lock(pool, mutex_idx);
+      // mutex_unset_lock(pool, mutex_idx);
     }
   }
 
@@ -447,7 +463,7 @@ private:
   real_t _getXRangeInSVoxel(RK4_t * DX, idx_t s1_idx, idx_t s2_idx,
     idx_t s3_idx, real_t X0_lower, real_t X0_upper)
   {
-    std::vector<real_t> X_vals_on_bounds = {
+    real_t X_vals_on_bounds[8] = {
       (*DX)(s1_idx,s2_idx,s3_idx) + X0_lower,
       (*DX)(s1_idx+1,s2_idx,s3_idx) + X0_upper,
       (*DX)(s1_idx,s2_idx+1,s3_idx) + X0_lower,
@@ -479,16 +495,22 @@ private:
     real_t H2 = std::pow(cosmology::H<real_t>(t), 2);
 
     // clear rho
-    PARALLEL_SHEET_LOOP(i, rho->nx*rho->ny*rho->nz)
-      (*rho)[i] = 0;
+    PARALLEL_SHEET_LOOP3(i, j, k, rho->nx, rho->ny, rho->nz)
+      (*rho)(i, j, k) = 0.0;
+    rho->applyPeriodicBoundaryConditions();
 
     // deposit "particles" from sheet
     PARALLEL_SHEET_LOOP3(i, j, k, specs.ns1, specs.ns2, specs.ns3)
       _pushSheetMassToRho(i, j, k);
+    // add in deposits into ghost regions
+    rho->addPeriodicGhostContributions();
 
     // account for background cosmology
-    PARALLEL_SHEET_LOOP(i, rho->nx*rho->ny*rho->nz)
-      (*rho)[i] *= 3.0/2.0*H2*a2;
+    PARALLEL_SHEET_LOOP3(i, j, k, rho->nx, rho->ny, rho->nz)
+      (*rho)(i, j, k) *= 3.0/2.0*H2*a2;
+
+    // apply PBCs
+    rho->applyPeriodicBoundaryConditions();
   }
 
   /**
@@ -592,7 +614,8 @@ private:
     // TODO: consider large-scale correction terms?
     *phi = *rho;
     // &(*phi)[0] is pointer to phi's internal array:
-    fourierX->inverseLaplacian(&(*phi)[0], 0);
+    fourierX->inverseLaplacian(&(*phi)[0], 0, NG);
+    phi->applyPeriodicBoundaryConditions();
 
     if(verbosity == debug)
     {
@@ -609,23 +632,19 @@ private:
   {
     idx_t i, j, k;
 
-    // *d_phi = *phi;
     switch (dir)
     {
       case 1:
-        // fourierX->periodicGradient(&(*d_phi)[0], 1);
         PARALLEL_SHEET_LOOP3(i, j, k, specs.nx, specs.ny, specs.nz)
           (*d_phi)(i, j, k) = phi->xDer(i,j,k);
         break;
 
       case 2:
-        // fourierX->periodicGradient(&(*d_phi)[0], 2);
         PARALLEL_SHEET_LOOP3(i, j, k, specs.nx, specs.ny, specs.nz)
           (*d_phi)(i, j, k) = phi->yDer(i,j,k);
         break;
       
       case 3:
-        // fourierX->periodicGradient(&(*d_phi)[0], 3);
         PARALLEL_SHEET_LOOP3(i, j, k, specs.nx, specs.ny, specs.nz)
           (*d_phi)(i, j, k) = phi->zDer(i,j,k);
         break;
@@ -634,6 +653,8 @@ private:
         std::cout << "Invalid derivative direction!" << std::endl;
         break;
     }
+
+    d_phi->applyPeriodicBoundaryConditions();
   }
 
   /**
@@ -647,9 +668,9 @@ private:
 
     // density projection
     if(verbosity == debug) std::cout << "  Performing density projection..." << std::flush;
-    _timer["_RK4Calc:_pushSheetMassToRho"].start();
+    _timer["_RK4Calc:_pushSheetToRho"].start();
     _pushSheetToRho(t);
-    _timer["_RK4Calc:_pushSheetMassToRho"].stop();
+    _timer["_RK4Calc:_pushSheetToRho"].stop();
     if(verbosity == debug) std::cout << " done." << std::endl << std::flush;
 
     // Metric potential from density
@@ -680,7 +701,7 @@ private:
       real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
       real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
       real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
-      vx->_c(i,j,k) = -1.0*d_phi->getInterpolatedValue(
+      vx->_c(i,j,k) = -1.0*d_phi->getInterpolatedValueAtModX(
         x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
     }
     _timer["_RK4Calc:v_Evaluation"].stop();
@@ -695,7 +716,7 @@ private:
       real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
       real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
       real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
-      vy->_c(i,j,k) = -1.0*d_phi->getInterpolatedValue(
+      vy->_c(i,j,k) = -1.0*d_phi->getInterpolatedValueAtModX(
         x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
     }
     _timer["_RK4Calc:v_Evaluation"].stop();
@@ -710,7 +731,7 @@ private:
       real_t x_pt = Dx->_a(i,j,k) + _S1IDXtoX0(i);
       real_t y_pt = Dy->_a(i,j,k) + _S2IDXtoY0(j);
       real_t z_pt = Dz->_a(i,j,k) + _S3IDXtoZ0(k);
-      vz->_c(i,j,k) = -1.0*d_phi->getInterpolatedValue(
+      vz->_c(i,j,k) = -1.0*d_phi->getInterpolatedValueAtModX(
         x_pt/d_phi->dx, y_pt/d_phi->dy, z_pt/d_phi->dz);
     }
     _timer["_RK4Calc:v_Evaluation"].stop();
@@ -846,7 +867,6 @@ private:
     {
       real_t x_frac = ((real_t) i)/specs.ns1 - 0.5;
       Dx->_p(i,j,k) = 1.0/specs.nx/5.0 - 0.5*std::exp(-1.0*std::pow(x_frac/0.05, 2))*x_frac;
-        //+0.3*std::exp(-1.0*std::pow((x_frac-.2)/0.05, 2.0))*x_frac;
     }
   }
 
@@ -939,7 +959,7 @@ private:
   void _initializeGaussianRandom()
   {
     // gaussian random realization of rho
-    fourierX->gaussianRandomRealization(&(*rho)[0]);
+    fourierX->gaussianRandomRealization(&(*rho)[0], NG);
 
     // Compute phi_1 contribution in phi
     _setMetricPotential();
@@ -970,6 +990,8 @@ private:
   void _initialize(const Specs specs_in)
   {
     specs = specs_in;
+    step = 0;
+    sim_t = specs.t_0;
 
     // Phase-space variables
     Dx = new RK4_t(specs.ns1, specs.ns2, specs.ns3,
@@ -1000,9 +1022,6 @@ private:
     pool = mutex_alloc_custom(specs.nx, SPLATT_DEFAULT_LOCK_PAD);
 
     _initializeFields(); // needs pool allocated first
-
-    step = 0;
-    sim_t = specs.t_0;
   }
 
   std::string _toStr(real_t val)
@@ -1057,7 +1076,7 @@ private:
           real_t y_idx = ( _S2IDXtoY0(j) + (*Dy)(i, j, k) ) / rho->dy;
           real_t z_idx = ( _S3IDXtoZ0(k) + (*Dz)(i, j, k) ) / rho->dz;
 
-          real_t potential = phi->getInterpolatedValue(x_idx, y_idx, z_idx);
+          real_t potential = phi->getInterpolatedValueAtModX(x_idx, y_idx, z_idx);
 
           tot_E += m/2.0*(v2 + potential);
         }

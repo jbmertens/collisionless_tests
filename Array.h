@@ -1,5 +1,5 @@
-#ifndef PERIODICARRAY_H
-#define PERIODICARRAY_H
+#ifndef ARRAY_H
+#define ARRAY_H
 
 #include <limits>
 #include <stdexcept>
@@ -12,32 +12,26 @@
   _Pragma("omp parallel for") \
   ARRAY_LOOP(i, pts)
 
-enum InterpolationType { Trilinear, LMTricubic, CINTTricubic };
+// number of ghost cells
+#define NG 2
 
-template<typename IT>
-inline IT IT_mod(IT n, IT d)
-{
-  if ( n >= 0 && n < d )
-    return n;
-
-  IT mod = n % d;
-  if(mod < 0)
-    mod += d;
-
-  return mod;
-}
+enum arrayInterpolationType { Trilinear, LMTricubic, CINTTricubic };
 
 template<typename IT, typename RT>
-class PeriodicArray
+class Array
 {
 protected:
 
-  IT _nx, _ny, _nz;
-  RT _lx, _ly, _lz;
+  IT _nx, _ny, _nz; ///< array dims
+  IT _nx_inc, _ny_inc, _nz_inc; ///< array dims incl. ghost zones
+  RT _lx, _ly, _lz; ///< physical dims
   RT _dx, _dy, _dz;
-  IT _pts;
+  IT _pts_inc; ///< # points (incl. ghost)
+  IT _pts_exc; ///< # points (excl. ghost)
 
   RT * _array;
+  
+  arrayInterpolationType interpolation_type;
 
 private:
 
@@ -48,6 +42,10 @@ private:
     _ny = ny_in;
     _nz = nz_in;
 
+    _nx_inc = nx_in + 2*NG;
+    _ny_inc = ny_in + 2*NG;
+    _nz_inc = nz_in + 2*NG;
+
     _lx = lx_in;
     _ly = ly_in;
     _lz = lz_in;
@@ -56,27 +54,26 @@ private:
     _dy = ly_in / (RT) ny_in;
     _dz = lz_in / (RT) nz_in;
 
-    _pts = _nx*_ny*_nz;
+    _pts_inc = _nx_inc*_ny_inc*_nz_inc;
+    _pts_exc = _nx*_ny*_nz;
 
-    _array = new RT[_pts];
+    _array = new RT[_pts_inc];
 
-    PARALLEL_ARRAY_LOOP(i, _pts)
+    PARALLEL_ARRAY_LOOP(i, _pts_inc)
     {
       _array[i] = 0.0;
     }
 
-    interpolationType = CINTTricubic;
+    interpolation_type = CINTTricubic;
   }
 
 public:
-
-  InterpolationType interpolationType;
 
   const IT &nx, &ny, &nz;
   const RT &lx, &ly, &lz;
   const RT &dx, &dy, &dz;
 
-  PeriodicArray(IT n_in) :
+  Array(IT n_in) :
     nx(_nx), ny(_ny), nz(_nz),
     lx(_lx), ly(_ly), lz(_lz),
     dx(_dx), dy(_dy), dz(_dz)
@@ -84,7 +81,7 @@ public:
     _init(n_in, n_in, n_in, 1.0, 1.0, 1.0);
   }
 
-  PeriodicArray(IT nx_in, IT ny_in, IT nz_in) :
+  Array(IT nx_in, IT ny_in, IT nz_in) :
     nx(_nx), ny(_ny), nz(_nz),
     lx(_lx), ly(_ly), lz(_lz),
     dx(_dx), dy(_dy), dz(_dz)
@@ -92,7 +89,8 @@ public:
     _init(nx_in, ny_in, nz_in, 1.0, 1.0, 1.0);
   }
 
-  PeriodicArray(IT nx_in, IT ny_in, IT nz_in, RT lx_in, RT ly_in, RT lz_in) :
+  Array(IT nx_in, IT ny_in, IT nz_in,
+    RT lx_in, RT ly_in, RT lz_in) :
     nx(_nx), ny(_ny), nz(_nz),
     lx(_lx), ly(_ly), lz(_lz),
     dx(_dx), dy(_dy), dz(_dz)
@@ -100,72 +98,29 @@ public:
     _init(nx_in, ny_in, nz_in, lx_in, ly_in, lz_in);
   }
 
-  PeriodicArray(IT nx_in, IT ny_in, IT nz_in, RT lx_in, RT ly_in, RT lz_in,
-    InterpolationType type) :
+  Array(IT nx_in, IT ny_in, IT nz_in,
+    RT lx_in, RT ly_in, RT lz_in, arrayInterpolationType type) :
     nx(_nx), ny(_ny), nz(_nz),
     lx(_lx), ly(_ly), lz(_lz),
     dx(_dx), dy(_dy), dz(_dz)
   {
-    interpolationType = type;
+    interpolation_type = type;
     _init(nx_in, ny_in, nz_in, lx_in, ly_in, lz_in);
   }
 
-  ~PeriodicArray()
+  ~Array()
   {
     delete [] _array;
   }
 
-  void setInterpolationType(InterpolationType type)
+  void setInterpolationType(arrayInterpolationType type)
   {
-    interpolationType = type;
+    interpolation_type = type;
   }
 
-  IT idx(IT i_in, IT j_in, IT k_in) const
+  IT idx(const IT & i_in, const IT & j_in, const IT & k_in) const
   {
-    IT i = IT_mod<IT>(i_in, _nx),
-       j = IT_mod<IT>(j_in, _ny),
-       k = IT_mod<IT>(k_in, _nz);
-    return npidx(i, j, k);
-  }
-
-  IT npidx(IT i_in, IT j_in, IT k_in) const
-  {
-    return i_in*_ny*_nz + j_in*_nz + k_in;
-  }
-
-  RT& operator()(const IT & i, const IT & j, const IT & k)
-  {
-    IT p = idx(i, j, k);
-    return _array[p];
-  }
-
-  PeriodicArray& operator=(const PeriodicArray& other) {
-    // check for self-assignment
-    if(&other == this)
-      return *this;
-
-    RT this_pts = this->_nx*this->_ny*this->_nz;
-    RT other_pts = other.nx*other.ny*other.nz;
-    if(this_pts != other_pts)
-      throw std::runtime_error ("Incompatible array shapes.");
-
-    this->_nx = other.nx;
-    this->_nz = other.ny;
-    this->_ny = other.nz;
-    this->_lx = other.lx;
-    this->_lz = other.ly;
-    this->_ly = other.lz;
-    this->_dx = other.dx;
-    this->_dz = other.dy;
-    this->_dy = other.dz;
-    this->_pts = this->_nx*this->_ny*this->_nz;
-
-    PARALLEL_ARRAY_LOOP(i, this->_pts)
-    {
-      this->_array[i] = other._array[i];
-    }
-
-    return *this;
+    return (i_in+NG)*_ny_inc*_nz_inc + (j_in+NG)*_nz_inc + (k_in+NG);
   }
 
   RT& operator[](IT idx)
@@ -173,66 +128,130 @@ public:
     return _array[idx];
   }
 
-  RT sum() const
+  RT& operator()(const IT & i, const IT & j, const IT & k)
   {
-    RT res = 0.0;
+    return _array[idx(i, j, k)];
+  }
 
-#pragma omp parallel for reduction(+:res)
-    ARRAY_LOOP(i, _pts)
+  Array& operator=(const Array& other) {
+    // check for self-assignment
+    if(&other == this)
+      return *this;
+
+    if(this->_nx != other.nx || this->_ny != other.ny || this->_nz != other.nz)
+      throw std::runtime_error ("Incompatible array shapes.");
+
+    PARALLEL_ARRAY_LOOP(i, this->_pts_inc)
     {
-      res += _array[i];
+      this->_array[i] = other._array[i];
     }
 
-    return res;
-  }
-  
-  RT avg() const
-  {
-    return sum() / (RT) _pts;
+    return *this;
   }
 
-  RT min() const
+
+  void addPeriodicGhostContributions()
   {
-    RT min_res = std::numeric_limits<RT>::max();
+    // contributions from 6 faces
 
-    PARALLEL_ARRAY_LOOP(i,_pts)
-    {
-#pragma omp critical
-      if(_array[i] < min_res)
-        min_res = _array[i];
-    }
-    return min_res;
-  }
-
-  RT max() const
-  {
-    RT max_res = std::numeric_limits<RT>::min();
-
-    PARALLEL_ARRAY_LOOP(i, _pts)
-    {
-#pragma omp critical
-        if(_array[i] > max_res)
-          max_res = _array[i];
-    }
-
-    return max_res;
-  }
-
-  void roll()
-  {
-    for(IT k=0; k<_nz; ++k)
-      for(IT j=0; j<_ny; ++j)
+    // x faces
+#pragma omp parallel for
+    for(IT j=-NG; j<_ny+NG; ++j)
+      for(IT k=-NG; k<_nz+NG; ++k)
       {
-        RT buffer_val = _array[idx(0, j, k)];
-        for(IT i=0; i<_nx-1; ++i)
-          _array[idx(i, j, k)] = _array[idx(i+1, j, k)];
-        _array[idx(_nx-1, j, k)] = buffer_val;
+        for(IT i=-NG; i<0; ++i)
+        {
+          _array[idx(i+_nx, j, k)] += _array[idx(i, j, k)];
+          _array[idx(i, j, k)] = 0; // contribution already added; zero ghost cell value.
+        }
+        for(IT i=_nx; i<_nx+NG; ++i)
+        {
+          _array[idx(i-_nx, j, k)] += _array[idx(i, j, k)];
+          _array[idx(i, j, k)] = 0; // contribution already added; zero ghost cell value.
+        }
       }
+
+    // y faces
+#pragma omp parallel for
+    for(IT i=-NG; i<_nx+NG; ++i)
+      for(IT k=-NG; k<_nz+NG; ++k)
+      {
+        for(IT j=-NG; j<0; ++j)
+        {
+          _array[idx(i, j+_ny, k)] += _array[idx(i, j, k)];
+          _array[idx(i, j, k)] = 0; // contribution already added; zero ghost cell value.
+        }
+        for(IT j=_ny; j<_ny+NG; ++j)
+        {
+          _array[idx(i, j-_ny, k)] += _array[idx(i, j, k)];
+          _array[idx(i, j, k)] = 0; // contribution already added; zero ghost cell value.
+        }
+      }
+
+    // z faces
+#pragma omp parallel for
+    for(IT i=-NG; i<_nx+NG; ++i)
+      for(IT j=-NG; j<_ny+NG; ++j)
+      {
+        for(IT k=-NG; k<0; ++k)
+        {
+          _array[idx(i, j, k+_nz)] += _array[idx(i, j, k)];
+          _array[idx(i, j, k)] = 0; // contribution already added; zero ghost cell value.
+        }
+        for(IT k=_nz; k<_nz+NG; ++k)
+        {
+          _array[idx(i, j, k-_nz)] += _array[idx(i, j, k)];
+          _array[idx(i, j, k)] = 0; // contribution already added; zero ghost cell value.
+        }
+      }
+  }
+
+  void applyPeriodicBoundaryConditions()
+  {
+    // contributions from 6 faces
+
+    // x faces
+    for(IT j=0; j<_ny; ++j)
+      for(IT k=0; k<_nz; ++k)
+      {
+        for(IT i=-NG; i<0; ++i)
+          _array[idx(i, j, k)] = _array[idx(i+_nx, j, k)];
+        for(IT i=_nx; i<_nx+NG; ++i)
+          _array[idx(i, j, k)] = _array[idx(i-_nx, j, k)];
+      }
+
+    // y faces (plus x ghosts)
+    for(IT i=-NG; i<_nx+NG; ++i)
+      for(IT k=0; k<_nz; ++k)
+      {
+        for(IT j=-NG; j<0; ++j)
+          _array[idx(i, j, k)] = _array[idx(i, j+_ny, k)];
+        for(IT j=_ny; j<_ny+NG; ++j)
+          _array[idx(i, j, k)] = _array[idx(i, j-_ny, k)];
+      }
+
+    // z faces (plus x and y ghosts)
+    for(IT i=-NG; i<_nx+NG; ++i)
+      for(IT j=-NG; j<_ny+NG; ++j)
+      {
+        for(IT k=-NG; k<0; ++k)
+          _array[idx(i, j, k)] = _array[idx(i, j, k+_nz)];
+        for(IT k=_nz; k<_nz+NG; ++k)
+          _array[idx(i, j, k)] = _array[idx(i, j, k-_nz)];
+      }
+  }
+
+  RT getInterpolatedValueAtModX(RT i_in, RT j_in, RT k_in) const
+  {
+    RT i_mod = i_in - _nx*std::floor(i_in/_nx);
+    RT j_mod = j_in - _ny*std::floor(j_in/_nz);
+    RT k_mod = k_in - _nz*std::floor(k_in/_ny);
+    return getInterpolatedValue(i_mod, j_mod, k_mod);
   }
 
   RT getInterpolatedValue(RT i_in, RT j_in, RT k_in) const
   {
-    switch(interpolationType)
+    switch(interpolation_type)
     {
       case Trilinear:
       default:

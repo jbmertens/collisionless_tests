@@ -8,8 +8,7 @@ LDFLAGS += -L${HOME}/local/lib
 #CXX=icpc
 
 # Optimizations
-OPTFLAGS += -O3
-OPTFLAGS += -ffast-math
+OPTFLAGS += -Ofast
 OPTFLAGS += -flto
 OPTFLAGS += -march=native
 

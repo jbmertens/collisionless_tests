@@ -20,6 +20,7 @@ template<typename RT>
 RT a(RT t)
 {
   // want a = 1 at t = 1 => a0 = 1
+return 1;
   return std::pow(t, 2.0/3.0);
 }
 
@@ -29,6 +30,7 @@ RT a(RT t)
 template<typename RT>
 RT H(RT t)
 {
+return 1;
   return 2.0/3.0/t;
 }
 

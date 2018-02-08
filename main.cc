@@ -21,6 +21,7 @@ void runSim(SheetSimulation::Specs specs, std::string out_base_dir,
   for(int t=0; t<=t_steps; ++t)
   {
     std::cout << "\rRunning step " << t << "..." << std::flush;
+    sheet.prepOutput();
     sheet.writeStrips(out_base_dir + "/strips");
     sheet.writeConstraints(out_base_dir);
     if(writeslices && t % (t_steps/4) == 0)
@@ -68,6 +69,14 @@ void runUniformTests(SheetSimulation::Specs specs)
   specs.initialization_type = SheetSimulation::initializationType::uniform1dv;
   SheetSimulation::Specs specs_alt = {0};
 
+
+specs_alt = specs;
+specs_alt.ns1 = 63;
+specs_alt.nx = 64;
+specs_alt.carriers_per_dx = 0;
+runSim(specs_alt, "sim_ns063_nx064_cpdx0", 2, false);
+return;
+
   specs_alt = specs;
   specs_alt.ns1 = 63;
   specs_alt.nx = 64;
@@ -79,13 +88,6 @@ void runUniformTests(SheetSimulation::Specs specs)
   specs_alt.nx = 64;
   specs_alt.carriers_per_dx = 2;
   runSim(specs_alt, "sim_ns063_nx064_cpdx2", 400, false);
-
-  specs_alt = specs;
-  specs_alt.ns1 = 63;
-  specs_alt.nx = 64;
-  specs_alt.carriers_per_dx = 2;
-  specs_alt.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_ds;
-  runSim(specs_alt, "sim_ns063_nx064_cpds2", 400, false);
 
 
   specs_alt = specs;
@@ -100,13 +102,6 @@ void runUniformTests(SheetSimulation::Specs specs)
   specs_alt.carriers_per_dx = 4;
   runSim(specs_alt, "sim_ns127_nx128_cpdx4", 400, false);
 
-  specs_alt = specs;
-  specs_alt.ns1 = 127;
-  specs_alt.nx = 128;
-  specs_alt.carriers_per_dx = 4;
-  specs_alt.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_ds;
-  runSim(specs_alt, "sim_ns127_nx128_cpds4", 400, false);
-
 
   specs_alt = specs;
   specs_alt.ns1 = 255;
@@ -119,14 +114,6 @@ void runUniformTests(SheetSimulation::Specs specs)
   specs_alt.nx = 256;
   specs_alt.carriers_per_dx = 8;
   runSim(specs_alt, "sim_ns255_nx256_cpdx8", 400, false);
-
-  specs_alt = specs;
-  specs_alt.ns1 = 255;
-  specs_alt.nx = 256;
-  specs_alt.carriers_per_dx = 8;
-  specs_alt.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_ds;
-  runSim(specs_alt, "sim_ns255_nx256_cpds8", 400, false);
-
 }
 
 void runGaussianField(SheetSimulation::Specs specs)
@@ -135,52 +122,20 @@ void runGaussianField(SheetSimulation::Specs specs)
   SheetSimulation::Specs specs_alt = {0};
 
   specs_alt = specs;
-  specs_alt.nx = 8; specs_alt.ny = 8; specs_alt.nz = 8;
-  specs_alt.ns1 = 4; specs_alt.ns2 = 4; specs_alt.ns3 = 4;
-  specs_alt.carriers_per_dx = 2;
-  specs_alt.carriers_per_dy = 2;
-  specs_alt.carriers_per_dz = 2;
-  runSim(specs_alt, "sim_GRF_nx08_ns04_cpds2", 500, true);
-
-  specs_alt = specs;
-  specs_alt.nx = 16; specs_alt.ny = 16; specs_alt.nz = 16;
-  specs_alt.ns1 = 8; specs_alt.ns2 = 8; specs_alt.ns3 = 8;
-  specs_alt.carriers_per_dx = 2;
-  specs_alt.carriers_per_dy = 2;
-  specs_alt.carriers_per_dz = 2;
-  runSim(specs_alt, "sim_GRF_nx16_ns08_cpds2", 500, true);
-
-  specs_alt = specs;
-  specs_alt.nx = 32; specs_alt.ny = 32; specs_alt.nz = 32;
-  specs_alt.ns1 = 16; specs_alt.ns2 = 16; specs_alt.ns3 = 16;
-  specs_alt.carriers_per_dx = 2;
-  specs_alt.carriers_per_dy = 2;
-  specs_alt.carriers_per_dz = 2;
-  runSim(specs_alt, "sim_GRF_nx32_ns16_cpds2", 500, true);
-
-  specs_alt = specs;
-  specs_alt.nx = 8; specs_alt.ny = 8; specs_alt.nz = 8;
-  specs_alt.ns1 = 8; specs_alt.ns2 = 8; specs_alt.ns3 = 8;
+  specs_alt.nx = 1600; specs_alt.ny = 1600; specs_alt.nz = 1600;
+  specs_alt.ns1 = 1600; specs_alt.ns2 = 1600; specs_alt.ns3 = 1600;
   specs_alt.carriers_per_dx = 0;
   specs_alt.carriers_per_dy = 0;
   specs_alt.carriers_per_dz = 0;
-  runSim(specs_alt, "sim_GRF_nx08_ns08_cpds0", 500, true);
+  runSim(specs_alt, "sim_GRF_nx1600_ns1600_cpds0", 5, false);
 
   specs_alt = specs;
-  specs_alt.nx = 16; specs_alt.ny = 16; specs_alt.nz = 16;
-  specs_alt.ns1 = 16; specs_alt.ns2 = 16; specs_alt.ns3 = 16;
-  specs_alt.carriers_per_dx = 0;
-  specs_alt.carriers_per_dy = 0;
-  specs_alt.carriers_per_dz = 0;
-  runSim(specs_alt, "sim_GRF_nx16_ns16_cpds0", 500, true);
-
-  specs_alt = specs;
-  specs_alt.nx = 32; specs_alt.ny = 32; specs_alt.nz = 32;
-  specs_alt.ns1 = 32; specs_alt.ns2 = 32; specs_alt.ns3 = 32;
-  specs_alt.carriers_per_dx = 0;
-  specs_alt.carriers_per_dy = 0;
-  specs_alt.carriers_per_dz = 0;
-  runSim(specs_alt, "sim_GRF_nx32_ns32_cpds0", 500, true);
+  specs_alt.nx = 1600; specs_alt.ny = 1600; specs_alt.nz = 1600;
+  specs_alt.ns1 = 1600; specs_alt.ns2 = 800; specs_alt.ns3 = 800;
+  specs_alt.carriers_per_dx = 2;
+  specs_alt.carriers_per_dy = 2;
+  specs_alt.carriers_per_dz = 2;
+  runSim(specs_alt, "sim_GRF_nx1600_ns0800_cpds2", 5, false);
 }
 
 
@@ -190,8 +145,8 @@ int main(int argc, char **argv)
 
   SheetSimulation::Specs specs = {0};
 
-  specs.nx = 1; specs.ny = 1; specs.nz = 1;
-  specs.ns1 = 1; specs.ns2 = 1; specs.ns3 = 1;
+  specs.nx = 2; specs.ny = 2; specs.nz = 2;
+  specs.ns1 = 2; specs.ns2 = 2; specs.ns3 = 2;
   specs.carriers_per_dx = 0;
   specs.carriers_per_dy = 0;
   specs.carriers_per_dz = 0;
@@ -201,11 +156,11 @@ int main(int argc, char **argv)
   specs.t_0 = 0.01;
 
   specs.deposit = SheetSimulation::depositScheme::PCS;
-  specs.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_dx;
+  specs.carrier_count_scheme = SheetSimulation::carrierCountScheme::per_ds;
   specs.interpolation_type = CINTTricubic; // or Trilinear
 
-  runOverdensityTests(specs);
-  // runUniformTests(specs);
+  // runOverdensityTests(specs);
+  runUniformTests(specs);
   // runGaussianField();
 
   return 0;
